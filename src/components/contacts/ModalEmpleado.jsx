@@ -1,4 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
+import { useAuth } from "../../auth/AuthProvider.jsx";
+import http from "../../api/http";
+import { tpath } from "../../lib/tenantPath";
+
 const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 export default function ModalEmpleado({
@@ -9,6 +13,9 @@ export default function ModalEmpleado({
   onClose,
   submitting = false,
 }) {
+  const { org } = useAuth();
+  const [locations, setLocations] = useState([]);
+
   const [form, setForm] = useState({
     es_persona: true,
     nombre: "",
@@ -21,6 +28,21 @@ export default function ModalEmpleado({
     objetivo_horas_mes: 160,
   });
   const [formErr, setFormErr] = useState({});
+
+  useEffect(() => {
+    if (!org?.slug || !open) return;
+    (async () => {
+      try {
+        const { data } = await http.get(
+          tpath(org.slug, "/contacts/locations/")
+        );
+        const items = Array.isArray(data?.results) ? data.results : data ?? [];
+        setLocations(items);
+      } catch {
+        setLocations([]);
+      }
+    })();
+  }, [org?.slug, open]);
 
   useEffect(() => {
     if (open) {
@@ -49,7 +71,6 @@ export default function ModalEmpleado({
 
   const payload = useMemo(() => {
     const base = {
-      // backend fuerza tipo="employee", pero lo incluimos por claridad
       tipo: "employee",
       es_persona: !!form.es_persona,
       nombre: form.nombre.trim(),
@@ -185,21 +206,24 @@ export default function ModalEmpleado({
               />
             </div>
 
-            {/* Perfil empleado opcional */}
+            {/* Ubicación como select */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
               <div>
-                <label className="block text-sm mb-1">Ubicación (ID)</label>
-                <input
+                <label className="block text-sm mb-1">Ubicación</label>
+                <select
                   className="w-full border rounded px-3 py-2"
                   value={form.ubicacion}
                   onChange={(e) =>
                     setForm((f) => ({ ...f, ubicacion: e.target.value }))
                   }
-                  placeholder="2"
-                />
-                <p className="text-xs text-gray-500 mt-1">
-                  *Más adelante lo hacemos con selector.
-                </p>
+                >
+                  <option value="">— Sin ubicación —</option>
+                  {locations.map((loc) => (
+                    <option key={loc.id} value={loc.id}>
+                      {loc.nombre ?? `#${loc.id}`}
+                    </option>
+                  ))}
+                </select>
               </div>
               <div>
                 <label className="block text-sm mb-1">Objetivo horas/mes</label>
