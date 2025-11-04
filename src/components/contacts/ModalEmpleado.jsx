@@ -1,12 +1,11 @@
 import { useEffect, useMemo, useState } from "react";
-
 const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 export default function ModalEmpleado({
   open,
   title = "Nuevo empleado",
-  initialData = null, // para edición
-  onSubmit, // async (payload) => Promise<void>
+  initialData = null,
+  onSubmit,
   onClose,
   submitting = false,
 }) {
@@ -18,9 +17,8 @@ export default function ModalEmpleado({
     telefono: "",
     documento_id: "",
     activo: true,
-    // perfil empleado (opcionales)
-    ubicacion: "", // id numérico o vacío
-    objetivo_horas_mes: 160, // número
+    ubicacion: "",
+    objetivo_horas_mes: 160,
   });
   const [formErr, setFormErr] = useState({});
 
@@ -34,6 +32,8 @@ export default function ModalEmpleado({
         telefono: initialData?.telefono ?? "",
         documento_id: initialData?.documento_id ?? "",
         activo: initialData?.activo ?? true,
+        ubicacion: initialData?.empleado?.ubicacion ?? "",
+        objetivo_horas_mes: initialData?.empleado?.objetivo_horas_mes ?? 160,
       });
       setFormErr({});
     }
@@ -49,6 +49,7 @@ export default function ModalEmpleado({
 
   const payload = useMemo(() => {
     const base = {
+      // backend fuerza tipo="employee", pero lo incluimos por claridad
       tipo: "employee",
       es_persona: !!form.es_persona,
       nombre: form.nombre.trim(),
@@ -58,7 +59,6 @@ export default function ModalEmpleado({
       documento_id: form.documento_id.trim() || "",
       activo: !!form.activo,
     };
-    // Perfil anidado (solo si hay algo)
     const empleado = {};
     if (String(form.ubicacion).trim())
       empleado.ubicacion = Number(form.ubicacion);
@@ -185,32 +185,38 @@ export default function ModalEmpleado({
               />
             </div>
 
-            <div>
-              <label className="block text-sm mb-1">Ubicación (ID)</label>
-              <input
-                className="w-full border rounded px-3 py-2"
-                value={form.ubicacion}
-                onChange={(e) =>
-                  setForm((f) => ({ ...f, ubicacion: e.target.value }))
-                }
-                placeholder="2"
-              />
-              <p className="text-xs text-gray-500 mt-1">
-                *De momento es el ID numérico de LocationLite.
-              </p>
-            </div>
-            <div>
-              <label className="block text-sm mb-1">Objetivo horas/mes</label>
-              <input
-                className="w-full border rounded px-3 py-2"
-                type="number"
-                min={0}
-                value={form.objetivo_horas_mes}
-                onChange={(e) =>
-                  setForm((f) => ({ ...f, objetivo_horas_mes: e.target.value }))
-                }
-                placeholder="160"
-              />
+            {/* Perfil empleado opcional */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              <div>
+                <label className="block text-sm mb-1">Ubicación (ID)</label>
+                <input
+                  className="w-full border rounded px-3 py-2"
+                  value={form.ubicacion}
+                  onChange={(e) =>
+                    setForm((f) => ({ ...f, ubicacion: e.target.value }))
+                  }
+                  placeholder="2"
+                />
+                <p className="text-xs text-gray-500 mt-1">
+                  *Más adelante lo hacemos con selector.
+                </p>
+              </div>
+              <div>
+                <label className="block text-sm mb-1">Objetivo horas/mes</label>
+                <input
+                  className="w-full border rounded px-3 py-2"
+                  type="number"
+                  min={0}
+                  value={form.objetivo_horas_mes}
+                  onChange={(e) =>
+                    setForm((f) => ({
+                      ...f,
+                      objetivo_horas_mes: e.target.value,
+                    }))
+                  }
+                  placeholder="160"
+                />
+              </div>
             </div>
 
             <label className="flex items-center gap-2 text-sm">

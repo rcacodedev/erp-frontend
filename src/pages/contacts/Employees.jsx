@@ -5,8 +5,8 @@ import { tpath } from "../../lib/tenantPath";
 import Toast from "../../components/Toast.jsx";
 import ModalEmpleado from "../../components/contacts/ModalEmpleado.jsx";
 import { downloadCSV } from "../../lib/csv";
+import { Link } from "react-router-dom";
 
-// Helpers
 function displayName(r) {
   return (
     [r.nombre, r.apellidos].filter(Boolean).join(" ").trim() ||
@@ -26,36 +26,29 @@ function useDebouncedValue(value, delay = 350) {
 export default function Employees() {
   const { org } = useAuth();
 
-  // -------------------------
-  // Filtros / búsqueda / orden
-  // -------------------------
-  const [search, setSearch] = useState(""); // DRF SearchFilter -> ?search=
-  const [activo, setActivo] = useState(""); // "", "true", "false"
-  const [bloqueado, setBloqueado] = useState(""); // "", "true", "false"
-  const [etiquetas, setEtiquetas] = useState(""); // string (JSON contains)
-  const [ordering, setOrdering] = useState("nombre"); // nombre | -nombre | updated_at | -updated_at
+  // filtros / búsqueda / orden
+  const [search, setSearch] = useState("");
+  const [activo, setActivo] = useState("");
+  const [bloqueado, setBloqueado] = useState("");
+  const [etiquetas, setEtiquetas] = useState("");
+  const [ordering, setOrdering] = useState("nombre");
   const searchDeb = useDebouncedValue(search, 400);
 
-  // -------------------------
-  // Paginación server-side
-  // -------------------------
+  // paginación
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(20);
-  const PAGE_SIZE_MUTABLE = true; // ya activaste page_size_query_param
+  const PAGE_SIZE_MUTABLE = true;
 
-  // -------------------------
-  // Datos
-  // -------------------------
+  // datos
   const [rows, setRows] = useState([]);
   const [count, setCount] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [reloadKey, setReloadKey] = useState(0);
 
-  // 🔁 BASE: usamos el endpoint GENÉRICO con filtro tipo=employee
+  // query de lista (endpoint dedicado)
   const listQueryPath = useMemo(() => {
     const p = new URLSearchParams();
-    p.set("tipo", "employee"); // filtro clave
     if (searchDeb.trim()) p.set("search", searchDeb.trim());
     if (activo === "true" || activo === "false") p.set("activo", activo);
     if (bloqueado === "true" || bloqueado === "false")
@@ -65,7 +58,7 @@ export default function Employees() {
     p.set("page", String(page));
     if (PAGE_SIZE_MUTABLE) p.set("page_size", String(pageSize));
     p.set("rk", String(reloadKey));
-    return `/contacts/?${p.toString()}`;
+    return `/contacts/employees/?${p.toString()}`;
   }, [
     searchDeb,
     activo,
@@ -115,28 +108,22 @@ export default function Employees() {
     setPage(1);
   }, [searchDeb, activo, bloqueado, etiquetas, ordering, pageSize]);
 
-  const pageCount = Math.max(1, Math.ceil(count / pageSize));
-
-  // -------------------------
-  // Toasts
-  // -------------------------
+  // toasts
   const [toast, setToast] = useState({ kind: "success", msg: "" });
 
-  // -------------------------
-  // Crear / Editar / Eliminar
-  // -------------------------
+  // modales
   const [openNew, setOpenNew] = useState(false);
   const [submittingNew, setSubmittingNew] = useState(false);
   const [openEdit, setOpenEdit] = useState(false);
   const [editRow, setEditRow] = useState(null);
   const [submittingEdit, setSubmittingEdit] = useState(false);
 
-  // CREATE: POST al genérico /contacts/ (como en Postman)
+  // CREATE → /contacts/employees/
   const createEmpleado = async (payload) => {
     try {
       setSubmittingNew(true);
       if (!org?.slug) throw new Error("Falta el slug de la organización.");
-      await http.post(tpath(org.slug, "/contacts/"), payload);
+      await http.post(tpath(org.slug, "/contacts/employees/"), payload);
       setReloadKey((k) => k + 1);
       setToast({ kind: "success", msg: "Empleado creado correctamente." });
       setOpenNew(false);
@@ -152,12 +139,12 @@ export default function Employees() {
     }
   };
 
-  // UPDATE: PATCH al genérico /contacts/{id}/
+  // UPDATE → /contacts/employees/{id}/
   const updateEmpleado = async (id, payload) => {
     try {
       setSubmittingEdit(true);
       if (!org?.slug) throw new Error("Falta el slug de la organización.");
-      await http.patch(tpath(org.slug, `/contacts/${id}/`), payload);
+      await http.patch(tpath(org.slug, `/contacts/employees/${id}/`), payload);
       setReloadKey((k) => k + 1);
       setToast({ kind: "success", msg: "Empleado actualizado correctamente." });
       setOpenEdit(false);
@@ -174,7 +161,7 @@ export default function Employees() {
     }
   };
 
-  // DELETE: DELETE al genérico /contacts/{id}/
+  // DELETE → /contacts/employees/{id}/
   const deleteEmpleado = async (row) => {
     try {
       if (!org?.slug) throw new Error("Falta el slug de la organización.");
@@ -182,7 +169,7 @@ export default function Employees() {
         `¿Seguro que deseas eliminar “${displayName(row) || row.id}”?`
       );
       if (!ok) return;
-      await http.delete(tpath(org.slug, `/contacts/${row.id}/`));
+      await http.delete(tpath(org.slug, `/contacts/employees/${row.id}/`));
       setReloadKey((k) => k + 1);
       setToast({ kind: "success", msg: "Empleado eliminado correctamente." });
     } catch (err) {
@@ -195,12 +182,11 @@ export default function Employees() {
     }
   };
 
-  // Exportar TODO lo filtrado desde /contacts/?tipo=employee…
+  // Exportar TODO desde /contacts/employees/
   const exportCSV = async () => {
     if (!org?.slug) return;
     try {
       const base = new URLSearchParams();
-      base.set("tipo", "employee");
       if (searchDeb.trim()) base.set("search", searchDeb.trim());
       if (activo === "true" || activo === "false") base.set("activo", activo);
       if (bloqueado === "true" || bloqueado === "false")
@@ -216,13 +202,13 @@ export default function Employees() {
         p.set("page", String(pageNum));
         p.set("page_size", String(CHUNK));
         const { data } = await http.get(
-          tpath(org.slug, `/contacts/?${p.toString()}`)
+          tpath(org.slug, `/contacts/employees/?${p.toString()}`)
         );
         const results = Array.isArray(data?.results) ? data.results : [];
         all = all.concat(results);
         if (!data?.next || results.length === 0) break;
         pageNum += 1;
-        if (all.length >= 50000) break; // seguridad
+        if (all.length >= 50000) break;
       }
 
       const mapped = all.map((r) => ({
@@ -250,7 +236,7 @@ export default function Employees() {
         onClose={() => setToast((t) => ({ ...t, msg: "" }))}
       />
 
-      {/* Barra superior: Exportar (izquierda) y Nuevo (derecha) */}
+      {/* Barra superior */}
       <div className="flex items-center">
         <div className="flex gap-2">
           <button
@@ -379,6 +365,12 @@ export default function Employees() {
                     <td className="px-3 py-2">{r.activo ? "Sí" : "No"}</td>
                     <td className="px-3 py-2">
                       <div className="flex gap-2">
+                        <Link
+                          className="px-2 py-1 text-xs rounded border hover:bg-gray-50"
+                          to={`/contacts/employees/${r.id}`}
+                        >
+                          Perfil
+                        </Link>
                         <button
                           className="px-2 py-1 text-xs rounded border hover:bg-gray-50"
                           onClick={() => {
@@ -404,7 +396,7 @@ export default function Employees() {
         </div>
       )}
 
-      {/* Paginación server-side */}
+      {/* Paginación */}
       <div className="flex items-center gap-3 justify-between text-sm">
         <div className="flex items-center gap-2">
           <span>Página</span>
@@ -437,11 +429,6 @@ export default function Employees() {
             value={pageSize}
             onChange={(e) => setPageSize(Number(e.target.value))}
             disabled={!PAGE_SIZE_MUTABLE}
-            title={
-              !PAGE_SIZE_MUTABLE
-                ? "Activa page_size_query_param en DRF para habilitar"
-                : ""
-            }
           >
             {[10, 20, 50, 100].map((n) => (
               <option key={n} value={n}>

@@ -5,14 +5,16 @@ import { tpath } from "../../lib/tenantPath";
 import Toast from "../../components/Toast.jsx";
 import ModalCliente from "../../components/contacts/ModalCliente.jsx";
 import { downloadCSV } from "../../lib/csv";
+import { Link } from "react-router-dom";
 
-// Helpers
 function displayName(r) {
-  return r.razon_social?.trim()
-    ? r.razon_social
-    : [r.nombre, r.apellidos].filter(Boolean).join(" ").trim();
+  return (
+    r.razon_social?.trim() ||
+    [r.nombre, r.apellidos].filter(Boolean).join(" ").trim() ||
+    r.nombre_comercial ||
+    ""
+  );
 }
-
 function useDebouncedValue(value, delay = 350) {
   const [v, setV] = useState(value);
   useEffect(() => {
@@ -25,34 +27,28 @@ function useDebouncedValue(value, delay = 350) {
 export default function Clients() {
   const { org } = useAuth();
 
-  // -------------------------
-  // Filtros / búsqueda / orden
-  // -------------------------
-  const [search, setSearch] = useState(""); // DRF SearchFilter -> ?search=
-  const [activo, setActivo] = useState(""); // "", "true", "false"
-  const [bloqueado, setBloqueado] = useState(""); // "", "true", "false"
-  const [etiquetas, setEtiquetas] = useState(""); // string (depende backend)
-  const [ordering, setOrdering] = useState("nombre"); // nombre | -nombre | ...
-
+  // filtros / búsqueda / orden
+  const [search, setSearch] = useState("");
+  const [activo, setActivo] = useState("");
+  const [bloqueado, setBloqueado] = useState("");
+  const [etiquetas, setEtiquetas] = useState("");
+  const [ordering, setOrdering] = useState("nombre");
   const searchDeb = useDebouncedValue(search, 400);
 
-  // -------------------------
-  // Paginación server-side
-  // -------------------------
+  // paginación
   const [page, setPage] = useState(1);
-  const [pageSize, setPageSize] = useState(20); // coincide con backend
-  const PAGE_SIZE_MUTABLE = true; // requiere page_size_query_param en DRF (ya lo hemos puesto)
+  const [pageSize, setPageSize] = useState(20);
+  const PAGE_SIZE_MUTABLE = true;
 
-  // -------------------------
-  // Datos
-  // -------------------------
+  // datos
   const [rows, setRows] = useState([]);
   const [count, setCount] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [reloadKey, setReloadKey] = useState(0);
 
-  const queryPath = useMemo(() => {
+  // query de lista (endpoint dedicado)
+  const listQueryPath = useMemo(() => {
     const p = new URLSearchParams();
     if (searchDeb.trim()) p.set("search", searchDeb.trim());
     if (activo === "true" || activo === "false") p.set("activo", activo);
@@ -80,12 +76,11 @@ export default function Clients() {
     setError("");
     setRows([]);
     setCount(0);
-
     let cancelled = false;
     async function fetchPage() {
       try {
         if (!org?.slug) return;
-        const { data } = await http.get(tpath(org.slug, queryPath));
+        const { data } = await http.get(tpath(org.slug, listQueryPath));
         const results = Array.isArray(data?.results)
           ? data.results
           : Array.isArray(data)
@@ -108,30 +103,21 @@ export default function Clients() {
     return () => {
       cancelled = true;
     };
-  }, [org?.slug, queryPath]);
+  }, [org?.slug, listQueryPath]);
 
-  // Reset page al cambiar filtros/orden/búsqueda/pageSize
   useEffect(() => {
     setPage(1);
   }, [searchDeb, activo, bloqueado, etiquetas, ordering, pageSize]);
 
-  const pageCount = Math.max(1, Math.ceil(count / pageSize));
-
-  // -------------------------
-  // Toasts
-  // -------------------------
   const [toast, setToast] = useState({ kind: "success", msg: "" });
 
-  // -------------------------
-  // Crear / Editar / Eliminar
-  // -------------------------
   const [openNew, setOpenNew] = useState(false);
   const [submittingNew, setSubmittingNew] = useState(false);
-
   const [openEdit, setOpenEdit] = useState(false);
   const [editRow, setEditRow] = useState(null);
   const [submittingEdit, setSubmittingEdit] = useState(false);
 
+  // CREATE → /contacts/clients/
   const createCliente = async (payload) => {
     try {
       setSubmittingNew(true);
@@ -152,6 +138,7 @@ export default function Clients() {
     }
   };
 
+  // UPDATE → /contacts/clients/{id}/
   const updateCliente = async (id, payload) => {
     try {
       setSubmittingEdit(true);
@@ -173,13 +160,12 @@ export default function Clients() {
     }
   };
 
+  // DELETE → /contacts/clients/{id}/
   const deleteCliente = async (row) => {
     try {
       if (!org?.slug) throw new Error("Falta el slug de la organización.");
       const ok = window.confirm(
-        `¿Seguro que deseas eliminar el cliente “${
-          displayName(row) || row.id
-        }”?`
+        `¿Seguro que deseas eliminar “${displayName(row) || row.id}”?`
       );
       if (!ok) return;
       await http.delete(tpath(org.slug, `/contacts/clients/${row.id}/`));
@@ -190,12 +176,11 @@ export default function Clients() {
         err?.response?.data?.detail ||
         err?.response?.data?.message ||
         err?.message ||
-        "Error al eliminar el cliente.";
+        "Error al eliminar.";
       setToast({ kind: "error", msg: detail });
     }
   };
 
-  // Exportar TODO lo filtrado (itera páginas con page_size alto)
   const exportCSV = async () => {
     if (!org?.slug) return;
     try {
@@ -207,7 +192,7 @@ export default function Clients() {
       if (etiquetas.trim()) base.set("etiquetas", etiquetas.trim());
       if (ordering) base.set("ordering", ordering);
 
-      const CHUNK = 1000; // ≤ max_page_size del backend
+      const CHUNK = 1000;
       let pageNum = 1;
       let all = [];
       while (true) {
@@ -221,7 +206,7 @@ export default function Clients() {
         all = all.concat(results);
         if (!data?.next || results.length === 0) break;
         pageNum += 1;
-        if (all.length >= 50000) break; // corte de seguridad
+        if (all.length >= 50000) break;
       }
 
       const mapped = all.map((r) => ({
@@ -230,7 +215,7 @@ export default function Clients() {
         email: r.email || "",
         telefono: r.telefono || "",
         documento_id: r.documento_id || "",
-        tipo: r.tipo || "client",
+        activo: r.activo ? "sí" : "no",
       }));
       downloadCSV("clientes.csv", mapped);
     } catch (e) {
@@ -249,13 +234,11 @@ export default function Clients() {
         onClose={() => setToast((t) => ({ ...t, msg: "" }))}
       />
 
-      {/* Barra superior: Exportar (izquierda) y Nuevo (derecha) */}
       <div className="flex items-center">
         <div className="flex gap-2">
           <button
             className="px-3 py-1.5 rounded border text-sm"
             onClick={exportCSV}
-            title="Exportar CSV (todo lo filtrado)"
           >
             Exportar CSV
           </button>
@@ -277,12 +260,11 @@ export default function Clients() {
             <label className="block text-sm mb-1">Buscar</label>
             <input
               className="w-full border rounded px-3 py-2"
-              placeholder="Nombre, razón social, email, teléfono…"
+              placeholder="Nombre, razón social, email…"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
             />
           </div>
-
           <div>
             <label className="block text-sm mb-1">Activo</label>
             <select
@@ -295,7 +277,6 @@ export default function Clients() {
               <option value="false">No</option>
             </select>
           </div>
-
           <div>
             <label className="block text-sm mb-1">Bloqueado</label>
             <select
@@ -308,7 +289,6 @@ export default function Clients() {
               <option value="false">No</option>
             </select>
           </div>
-
           <div>
             <label className="block text-sm mb-1">Etiqueta</label>
             <input
@@ -318,7 +298,6 @@ export default function Clients() {
               onChange={(e) => setEtiquetas(e.target.value)}
             />
           </div>
-
           <div>
             <label className="block text-sm mb-1">Orden</label>
             <select
@@ -328,8 +307,6 @@ export default function Clients() {
             >
               <option value="nombre">Nombre ↑</option>
               <option value="-nombre">Nombre ↓</option>
-              <option value="razon_social">Razón social ↑</option>
-              <option value="-razon_social">Razón social ↓</option>
               <option value="updated_at">Actualizado ↑</option>
               <option value="-updated_at">Actualizado ↓</option>
             </select>
@@ -346,10 +323,13 @@ export default function Clients() {
             <thead className="bg-gray-50">
               <tr>
                 <th className="text-left px-3 py-2 font-medium">ID</th>
-                <th className="text-left px-3 py-2 font-medium">Nombre</th>
+                <th className="text-left px-3 py-2 font-medium">
+                  Nombre / Razón social
+                </th>
                 <th className="text-left px-3 py-2 font-medium">Email</th>
                 <th className="text-left px-3 py-2 font-medium">Teléfono</th>
-                <th className="text-left px-3 py-2 font-medium">NIF/CIF</th>
+                <th className="text-left px-3 py-2 font-medium">NIF/NIE</th>
+                <th className="text-left px-3 py-2 font-medium">Activo</th>
                 <th className="text-left px-3 py-2 font-medium w-40">
                   Acciones
                 </th>
@@ -358,13 +338,13 @@ export default function Clients() {
             <tbody>
               {loading ? (
                 <tr>
-                  <td className="px-3 py-2" colSpan={6}>
+                  <td className="px-3 py-2" colSpan={7}>
                     Cargando…
                   </td>
                 </tr>
               ) : !rows?.length ? (
                 <tr>
-                  <td className="px-3 py-2" colSpan={6}>
+                  <td className="px-3 py-2" colSpan={7}>
                     Sin datos
                   </td>
                 </tr>
@@ -376,8 +356,15 @@ export default function Clients() {
                     <td className="px-3 py-2">{r.email ?? ""}</td>
                     <td className="px-3 py-2">{r.telefono ?? ""}</td>
                     <td className="px-3 py-2">{r.documento_id ?? ""}</td>
+                    <td className="px-3 py-2">{r.activo ? "Sí" : "No"}</td>
                     <td className="px-3 py-2">
                       <div className="flex gap-2">
+                        <Link
+                          className="px-2 py-1 text-xs rounded border hover:bg-gray-50"
+                          to={`/contacts/clients/${r.id}`}
+                        >
+                          Perfil
+                        </Link>
                         <button
                           className="px-2 py-1 text-xs rounded border hover:bg-gray-50"
                           onClick={() => {
@@ -403,7 +390,7 @@ export default function Clients() {
         </div>
       )}
 
-      {/* Paginación server-side */}
+      {/* Paginación */}
       <div className="flex items-center gap-3 justify-between text-sm">
         <div className="flex items-center gap-2">
           <span>Página</span>
@@ -436,11 +423,6 @@ export default function Clients() {
             value={pageSize}
             onChange={(e) => setPageSize(Number(e.target.value))}
             disabled={!PAGE_SIZE_MUTABLE}
-            title={
-              !PAGE_SIZE_MUTABLE
-                ? "Activa page_size_query_param en DRF para habilitar"
-                : ""
-            }
           >
             {[10, 20, 50, 100].map((n) => (
               <option key={n} value={n}>
