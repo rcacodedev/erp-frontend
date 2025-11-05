@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, useRef } from "react";
 import { useAuth } from "../../auth/AuthProvider.jsx";
 import http from "../../api/http";
 import { tpath } from "../../lib/tenantPath";
@@ -46,6 +46,8 @@ export default function Suppliers() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [reloadKey, setReloadKey] = useState(0);
+  const fileRef = useRef(null);
+  const [pollJob, setPollJob] = useState(null);
 
   // query de lista (endpoint dedicado)
   const listQueryPath = useMemo(() => {
@@ -229,6 +231,79 @@ export default function Suppliers() {
     }
   };
 
+  const importCSV = async (file) => {
+    if (!org?.slug || !file) return;
+    try {
+      const fd = new FormData();
+      fd.append("file", file);
+      fd.append("tipo", "supplier"); // en Employees.jsx usa "employee", en Suppliers.jsx "supplier"
+      const { data } = await http.post(
+        tpath(org.slug, "/contacts/import/"),
+        fd,
+        {
+          headers: { "Content-Type": "multipart/form-data" },
+        }
+      );
+      setToast({ kind: "info", msg: "Importación encolada. Procesando…" });
+      setPollJob(data?.job_id);
+    } catch (err) {
+      const detail = err?.response?.data?.detail || err.message;
+      setToast({ kind: "error", msg: detail });
+    }
+  };
+
+  // polling simple
+  useEffect(() => {
+    if (!pollJob || !org?.slug) return;
+    const id = setInterval(async () => {
+      try {
+        const { data } = await http.get(
+          tpath(org.slug, `/contacts/jobs/${pollJob}/status/`)
+        );
+        if (data?.status === "finished") {
+          clearInterval(id);
+          const r = data?.result || {};
+          setToast({
+            kind: "success",
+            msg: `Importación OK. Creados ${r.created}, actualizados ${
+              r.updated
+            }. Errores: ${r.errors?.length || 0}`,
+          });
+          setReloadKey((k) => k + 1);
+          setPollJob(null);
+        } else if (data?.status === "failed") {
+          clearInterval(id);
+          setToast({ kind: "error", msg: "La importación ha fallado." });
+          setPollJob(null);
+        }
+      } catch {
+        /* ignora tick */
+      }
+    }, 1500);
+    return () => clearInterval(id);
+  }, [pollJob, org?.slug]);
+
+  const onDownloadTemplate = async () => {
+    try {
+      const url = tpath(org.slug, "/contacts/template.csv");
+      const res = await http.get(url, { responseType: "blob" }); // 👈 blob!
+      const blob = new Blob([res.data], { type: "text/csv;charset=utf-8" });
+      const a = document.createElement("a");
+      a.href = URL.createObjectURL(blob);
+      a.download = "contacts_template.csv";
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(a.href);
+    } catch (err) {
+      const detail = err?.response?.data?.detail || err.message;
+      setToast?.({
+        kind: "error",
+        msg: `No se pudo descargar la plantilla: ${detail}`,
+      });
+    }
+  };
+
   return (
     <section className="space-y-4">
       <Toast
@@ -244,6 +319,29 @@ export default function Suppliers() {
             onClick={exportCSV}
           >
             Exportar CSV
+          </button>
+          <button
+            className="px-3 py-1.5 rounded border text-sm"
+            onClick={() => fileRef.current?.click()}
+          >
+            Importar CSV
+          </button>
+          <input
+            ref={fileRef}
+            type="file"
+            accept=".csv"
+            className="hidden"
+            onChange={(e) => {
+              const f = e.target.files?.[0];
+              if (f) importCSV(f);
+              e.target.value = "";
+            }}
+          />
+          <button
+            className="px-3 py-1.5 rounded border text-sm"
+            onClick={onDownloadTemplate}
+          >
+            Descargar plantilla CSV
           </button>
         </div>
         <div className="ml-auto">
