@@ -30,6 +30,9 @@ import ClientProfile from "./pages/contacts/ClientProfile.jsx";
 import EmployeeProfile from "./pages/contacts/EmployeeProfile.jsx";
 import SupplierProfile from "./pages/contacts/SupplierProfile.jsx";
 
+import InventoryPage from "./pages/inventory/InventoryPage.jsx";
+import FinancePage from "./pages/sales/FinancePage.jsx";
+
 // Layout protegido con Navbar + Outlet
 function ProtectedShell() {
   return (
@@ -55,6 +58,12 @@ export default function App() {
             {/* Home → redirige a dashboard */}
             <Route path="/" element={<Navigate to="/dashboard" replace />} />
             <Route path="/dashboard" element={<Dashboard />} />
+
+            {/* Inventario */}
+            <Route path="/inventory" element={<InventoryPage />} />
+
+            {/* Finanzas */}
+            <Route path="/finanzas" element={<FinancePage />} />
 
             {/* Billing */}
             <Route path="/billing/plans" element={<BillingPlans />} />

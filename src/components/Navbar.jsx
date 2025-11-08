@@ -43,6 +43,28 @@ export default function Navbar() {
             Contactos
           </NavLink>
           <NavLink
+            to="/inventory"
+            className={({ isActive }) =>
+              `px-2 py-1 rounded ${
+                isActive ? "bg-black text-white" : "hover:bg-gray-100"
+              }`
+            }
+          >
+            Inventario
+          </NavLink>
+
+          <NavLink
+            to="/finanzas"
+            className={({ isActive }) =>
+              `px-2 py-1 rounded ${
+                isActive ? "bg-black text-white" : "hover:bg-gray-100"
+              }`
+            }
+          >
+            Finanzas
+          </NavLink>
+
+          <NavLink
             to="/billing/plans"
             className={({ isActive }) =>
               `px-2 py-1 rounded ${
