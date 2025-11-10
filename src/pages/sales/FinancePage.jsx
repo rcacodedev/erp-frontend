@@ -1,10 +1,11 @@
 // src/pages/sales/FinancePage.jsx
-import { useEffect, useState, useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useAuth } from "../../auth/AuthProvider.jsx";
 import http from "../../api/http";
 import { tpath } from "../../lib/tenantPath";
 import Toast from "../../components/Toast.jsx";
 import Tabs from "../../components/ui/Tabs.jsx";
+import QuoteModal from "../../components/sales/QuoteModal.jsx";
 
 function displayContactName(c) {
   if (!c) return "";
@@ -16,332 +17,719 @@ function displayContactName(c) {
   );
 }
 
-// --- Presupuestos ---
-// --- Presupuestos ---
-function QuotesTab() {
-  const { org } = useAuth();
-  const [rows, setRows] = useState([]);
-  const [toast, setToast] = useState(null);
-  const [loading, setLoading] = useState(false);
-  const [showNewModal, setShowNewModal] = useState(false);
+function formatMoney(v) {
+  if (v === null || v === undefined) return "0.00";
+  const num = Number(v);
+  if (!Number.isFinite(num)) return String(v);
+  return num.toFixed(2);
+}
 
-  const loadQuotes = async (signal) => {
+export default function FinancePage() {
+  const { org } = useAuth();
+
+  const [quotes, setQuotes] = useState([]);
+  const [deliveryNotes, setDeliveryNotes] = useState([]);
+  const [invoices, setInvoices] = useState([]);
+
+  const [loadingQuotes, setLoadingQuotes] = useState(false);
+  const [loadingDN, setLoadingDN] = useState(false);
+  const [loadingInv, setLoadingInv] = useState(false);
+
+  const [toast, setToast] = useState(null);
+
+  // Modal de presupuesto (create/edit)
+  const [quoteModalOpen, setQuoteModalOpen] = useState(false);
+  const [quoteModalMode, setQuoteModalMode] = useState("create"); // "create" | "edit"
+  const [quoteToEdit, setQuoteToEdit] = useState(null);
+
+  // --- Loaders ----------------------------------------------------
+
+  const loadQuotes = async () => {
     if (!org?.slug) return;
+    setLoadingQuotes(true);
     try {
-      setLoading(true);
-      const { data } = await http.get(tpath(org.slug, "/sales/quotes/"), {
-        signal,
-      });
-      const results = Array.isArray(data?.results)
+      const { data } = await http.get(tpath(org.slug, "/sales/quotes/"));
+      const items = Array.isArray(data?.results)
         ? data.results
         : Array.isArray(data)
         ? data
         : data?.items ?? [];
-      setRows(results);
+      setQuotes(items);
     } catch (err) {
-      if (signal?.aborted) return;
       console.error(err);
       setToast({
         kind: "error",
         msg: "Error cargando presupuestos.",
       });
     } finally {
-      setLoading(false);
+      setLoadingQuotes(false);
+    }
+  };
+
+  const loadDeliveryNotes = async () => {
+    if (!org?.slug) return;
+    setLoadingDN(true);
+    try {
+      const { data } = await http.get(
+        tpath(org.slug, "/sales/delivery-notes/")
+      );
+      const items = Array.isArray(data?.results)
+        ? data.results
+        : Array.isArray(data)
+        ? data
+        : data?.items ?? [];
+      setDeliveryNotes(items);
+    } catch (err) {
+      console.error(err);
+      setToast({
+        kind: "error",
+        msg: "Error cargando albaranes.",
+      });
+    } finally {
+      setLoadingDN(false);
+    }
+  };
+
+  const loadInvoices = async () => {
+    if (!org?.slug) return;
+    setLoadingInv(true);
+    try {
+      const { data } = await http.get(tpath(org.slug, "/sales/invoices/"));
+      const items = Array.isArray(data?.results)
+        ? data.results
+        : Array.isArray(data)
+        ? data
+        : data?.items ?? [];
+      setInvoices(items);
+    } catch (err) {
+      console.error(err);
+      setToast({
+        kind: "error",
+        msg: "Error cargando facturas.",
+      });
+    } finally {
+      setLoadingInv(false);
     }
   };
 
   useEffect(() => {
     if (!org?.slug) return;
-    const controller = new AbortController();
-    loadQuotes(controller.signal);
-    return () => controller.abort();
+    loadQuotes();
+    loadDeliveryNotes();
+    loadInvoices();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [org?.slug]);
 
-  const handleCreated = () => {
-    setShowNewModal(false);
-    loadQuotes(); // recarga lista
-    setToast({
-      kind: "success",
-      msg: "Presupuesto creado correctamente.",
-    });
+  // --- Acciones de presupuestos -----------------------------------
+
+  const handleQuoteStatus = async (quote, action) => {
+    if (!org?.slug) return;
+    try {
+      const { data } = await http.post(
+        tpath(org.slug, `/sales/quotes/${quote.id}/${action}/`)
+      );
+      setQuotes((prev) => prev.map((q) => (q.id === data.id ? data : q)));
+      setToast({
+        kind: "success",
+        msg: `Presupuesto ${data.number} actualizado (${data.status}).`,
+      });
+    } catch (err) {
+      console.error(err);
+      setToast({
+        kind: "error",
+        msg: "No se pudo actualizar el estado del presupuesto.",
+      });
+    }
   };
 
-  return (
-    <div className="space-y-3">
-      {toast?.msg && (
-        <Toast
-          kind={toast.kind}
-          msg={toast.msg}
-          onClose={() => setToast(null)}
-        />
-      )}
-
-      <div className="flex items-center justify-between">
-        <h2 className="font-medium">Presupuestos</h2>
-        <button
-          type="button"
-          className="text-xs px-3 py-1 border rounded hover:bg-gray-50"
-          onClick={() => setShowNewModal(true)}
-        >
-          Nuevo presupuesto
-        </button>
-      </div>
-
-      {loading ? (
-        <p className="text-sm text-gray-600">Cargando...</p>
-      ) : rows.length === 0 ? (
-        <p className="text-sm text-gray-600">No hay presupuestos.</p>
-      ) : (
-        <div className="overflow-auto">
-          <table className="min-w-full text-sm">
-            <thead className="bg-gray-50">
-              <tr>
-                <th className="px-3 py-2 text-left">Número</th>
-                <th className="px-3 py-2 text-left">Fecha</th>
-                <th className="px-3 py-2 text-left">Cliente</th>
-                <th className="px-3 py-2 text-right">Total</th>
-                <th className="px-3 py-2 text-left">Estado</th>
-              </tr>
-            </thead>
-            <tbody>
-              {rows.map((q) => (
-                <tr key={q.id} className="border-t">
-                  <td className="px-3 py-2">{q.number}</td>
-                  <td className="px-3 py-2">{q.date}</td>
-                  <td className="px-3 py-2">
-                    {displayContactName(q.customer_detail || q.customer)}
-                  </td>
-                  <td className="px-3 py-2 text-right">
-                    {q.total ?? q.totals_total ?? "-"}
-                  </td>
-                  <td className="px-3 py-2">{q.status}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
-
-      {showNewModal && (
-        <NewQuoteModal
-          onClose={() => setShowNewModal(false)}
-          onCreated={handleCreated}
-        />
-      )}
-    </div>
-  );
-}
-
-// --- Albaranes ---
-function DeliveryNotesTab() {
-  const { org } = useAuth();
-  const [rows, setRows] = useState([]);
-  const [toast, setToast] = useState(null);
-  const [loading, setLoading] = useState(false);
-
-  useEffect(() => {
+  const handleQuoteToInvoice = async (quote) => {
     if (!org?.slug) return;
-    let cancelled = false;
-    async function load() {
-      try {
-        setLoading(true);
-        const { data } = await http.get(
-          tpath(org.slug, "/sales/delivery-notes/")
-        );
-        const results = Array.isArray(data?.results)
-          ? data.results
-          : Array.isArray(data)
-          ? data
-          : data?.items ?? [];
-        if (!cancelled) setRows(results);
-      } catch (err) {
-        console.error(err);
-        if (!cancelled) {
-          setToast({
-            kind: "error",
-            msg: "Error cargando albaranes.",
-          });
-        }
-      } finally {
-        if (!cancelled) setLoading(false);
-      }
+    if (
+      !window.confirm(`¿Convertir el presupuesto ${quote.number} en factura?`)
+    ) {
+      return;
     }
-    load();
-    return () => {
-      cancelled = true;
-    };
-  }, [org?.slug]);
+    try {
+      await http.post(tpath(org.slug, `/sales/quotes/${quote.id}/to_invoice/`));
+      await loadQuotes();
+      await loadInvoices();
+      setToast({
+        kind: "success",
+        msg: `Presupuesto ${quote.number} convertido en factura.`,
+      });
+    } catch (err) {
+      console.error(err);
+      setToast({
+        kind: "error",
+        msg: "No se pudo convertir el presupuesto en factura.",
+      });
+    }
+  };
 
-  return (
-    <div className="space-y-3">
-      {toast?.msg && (
-        <Toast
-          kind={toast.kind}
-          msg={toast.msg}
-          onClose={() => setToast(null)}
-        />
-      )}
-
-      <div className="flex items-center justify-between">
-        <h2 className="font-medium">Albaranes</h2>
-        <button
-          type="button"
-          className="text-xs px-3 py-1 border rounded hover:bg-gray-50"
-        >
-          Nuevo albarán (WIP)
-        </button>
-      </div>
-
-      {loading ? (
-        <p className="text-sm text-gray-600">Cargando...</p>
-      ) : rows.length === 0 ? (
-        <p className="text-sm text-gray-600">No hay albaranes.</p>
-      ) : (
-        <div className="overflow-auto">
-          <table className="min-w-full text-sm">
-            <thead className="bg-gray-50">
-              <tr>
-                <th className="px-3 py-2 text-left">Número</th>
-                <th className="px-3 py-2 text-left">Fecha</th>
-                <th className="px-3 py-2 text-left">Cliente</th>
-                <th className="px-3 py-2 text-left">Estado</th>
-              </tr>
-            </thead>
-            <tbody>
-              {rows.map((dn) => (
-                <tr key={dn.id} className="border-t">
-                  <td className="px-3 py-2">{dn.number}</td>
-                  <td className="px-3 py-2">{dn.date}</td>
-                  <td className="px-3 py-2">
-                    {displayContactName(dn.customer_detail || dn.customer)}
-                  </td>
-                  <td className="px-3 py-2">{dn.status}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
-    </div>
-  );
-}
-
-// --- Facturas ---
-function InvoicesTab() {
-  const { org } = useAuth();
-  const [rows, setRows] = useState([]);
-  const [toast, setToast] = useState(null);
-  const [loading, setLoading] = useState(false);
-
-  useEffect(() => {
+  // ✅ DUPLICAR PRESUPUESTO
+  const handleDuplicateQuote = async (quote) => {
     if (!org?.slug) return;
-    let cancelled = false;
-    async function load() {
-      try {
-        setLoading(true);
-        const { data } = await http.get(tpath(org.slug, "/sales/invoices/"));
-        const results = Array.isArray(data?.results)
-          ? data.results
-          : Array.isArray(data)
-          ? data
-          : data?.items ?? [];
-        if (!cancelled) setRows(results);
-      } catch (err) {
-        console.error(err);
-        if (!cancelled) {
-          setToast({
-            kind: "error",
-            msg: "Error cargando facturas.",
-          });
-        }
-      } finally {
-        if (!cancelled) setLoading(false);
+
+    try {
+      setToast(null);
+
+      // Número original
+      const origNumber = quote.number || "";
+
+      // Generar número nuevo tipo P-2025-0002-COPY, P-2025-0002-COPY2, etc.
+      let newNumber;
+      const copyMatch = origNumber.match(/^(.*-COPY)(\d+)?$/);
+
+      if (copyMatch) {
+        const base = copyMatch[1]; // "P-2025-0002-COPY"
+        const num = copyMatch[2]
+          ? parseInt(copyMatch[2], 10) + 1 // "COPY2" -> "COPY3"
+          : 2; // primera copia: "COPY2"
+        newNumber = `${base}${num}`;
+      } else {
+        newNumber = `${origNumber}-COPY`;
       }
+
+      // Cabecera nueva
+      const headerPayload = {
+        number: newNumber,
+        customer: quote.customer || quote.customer_detail?.id,
+        date: quote.date,
+      };
+
+      const { data: newQuote } = await http.post(
+        tpath(org.slug, "/sales/quotes/"),
+        headerPayload
+      );
+
+      // Duplicar líneas
+      if (Array.isArray(quote.lines)) {
+        for (const ln of quote.lines) {
+          await http.post(
+            tpath(org.slug, `/sales/quotes/${newQuote.id}/add_line/`),
+            {
+              product: ln.product || null,
+              description: ln.description,
+              qty: ln.qty, // ya viene como string tipo "6.000"
+              unit_price: ln.unit_price,
+              tax_rate: ln.tax_rate,
+              discount_pct: ln.discount_pct,
+            }
+          );
+        }
+      }
+
+      await loadQuotes();
+
+      setToast({
+        kind: "success",
+        msg: `Presupuesto duplicado como ${newQuote.number}.`,
+      });
+    } catch (err) {
+      console.error("Error al duplicar presupuesto:", err);
+
+      const status = err?.response?.status;
+      const data = err?.response?.data;
+      let friendly = "No se pudo duplicar el presupuesto.";
+
+      if (typeof data === "string") {
+        const lower = data.toLowerCase();
+        if (
+          lower.includes("llave duplicada") ||
+          lower.includes("duplicate key") ||
+          lower.includes("unicidad") ||
+          lower.includes("unique constraint")
+        ) {
+          friendly =
+            "No se pudo duplicar porque el número generado ya existe. Cambia el número y vuelve a intentarlo.";
+        } else if (!lower.includes("<html") && data.length < 200) {
+          friendly = data;
+        } else if (status >= 500) {
+          friendly =
+            "Error interno del servidor al duplicar el presupuesto. Prueba más tarde.";
+        }
+      } else if (data && typeof data === "object") {
+        if (Array.isArray(data.number)) {
+          friendly = data.number.join(" ");
+        } else if (Array.isArray(data.non_field_errors)) {
+          friendly = data.non_field_errors.join(" ");
+        }
+      }
+
+      setToast({ kind: "error", msg: friendly });
     }
-    load();
-    return () => {
-      cancelled = true;
-    };
-  }, [org?.slug]);
+  };
 
-  return (
-    <div className="space-y-3">
-      {toast?.msg && (
-        <Toast
-          kind={toast.kind}
-          msg={toast.msg}
-          onClose={() => setToast(null)}
-        />
-      )}
+  // --- Acciones de facturas ---------------------------------------
 
-      <div className="flex items-center justify-between">
-        <h2 className="font-medium">Facturas</h2>
-        <button
-          type="button"
-          className="text-xs px-3 py-1 border rounded hover:bg-gray-50"
-        >
-          Nueva factura (WIP)
-        </button>
-      </div>
+  const handlePostInvoice = async (inv) => {
+    if (!org?.slug) return;
+    if (inv.status === "posted") return;
+    if (
+      !window.confirm(
+        `¿Contabilizar la factura ${inv.series || ""}${
+          inv.number
+        }? Después no se podrá editar.`
+      )
+    ) {
+      return;
+    }
+    try {
+      const { data } = await http.post(
+        tpath(org.slug, `/sales/invoices/${inv.id}/post/`)
+      );
+      setInvoices((prev) => prev.map((i) => (i.id === data.id ? data : i)));
+      setToast({
+        kind: "success",
+        msg: `Factura ${data.series || ""}${data.number} contabilizada.`,
+      });
+    } catch (err) {
+      console.error(err);
+      setToast({
+        kind: "error",
+        msg: "No se pudo contabilizar la factura.",
+      });
+    }
+  };
 
-      {loading ? (
-        <p className="text-sm text-gray-600">Cargando...</p>
-      ) : rows.length === 0 ? (
-        <p className="text-sm text-gray-600">No hay facturas.</p>
-      ) : (
-        <div className="overflow-auto">
-          <table className="min-w-full text-sm">
-            <thead className="bg-gray-50">
-              <tr>
-                <th className="px-3 py-2 text-left">Serie/Número</th>
-                <th className="px-3 py-2 text-left">Fecha</th>
-                <th className="px-3 py-2 text-left">Cliente</th>
-                <th className="px-3 py-2 text-right">Total</th>
-                <th className="px-3 py-2 text-left">Estado</th>
-                <th className="px-3 py-2 text-left">Pago</th>
-                <th className="px-3 py-2 text-left">Verifactu</th>
-              </tr>
-            </thead>
-            <tbody>
-              {rows.map((inv) => (
-                <tr key={inv.id} className="border-t">
-                  <td className="px-3 py-2">
-                    {inv.series}-{inv.number}
-                  </td>
-                  <td className="px-3 py-2">{inv.date_issue}</td>
-                  <td className="px-3 py-2">
-                    {displayContactName(inv.customer_detail || inv.customer)}
-                  </td>
-                  <td className="px-3 py-2 text-right">
-                    {inv.total ?? inv.totals_total ?? "-"}
-                  </td>
-                  <td className="px-3 py-2">{inv.status}</td>
-                  <td className="px-3 py-2">{inv.payment_status}</td>
-                  <td className="px-3 py-2">{inv.verifactu_status}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+  const handleRegisterPayment = async (inv) => {
+    if (!org?.slug) return;
+    const amountStr = window.prompt(
+      `Importe cobrado para la factura ${inv.series || ""}${inv.number}:`,
+      formatMoney(inv.total)
+    );
+    if (!amountStr) return;
+    const amount = Number(amountStr);
+    if (!Number.isFinite(amount) || amount <= 0) {
+      window.alert("Importe no válido.");
+      return;
+    }
+    const today = new Date().toISOString().slice(0, 10);
+    const dateStr =
+      window.prompt("Fecha del cobro (YYYY-MM-DD):", inv.date_issue || today) ||
+      today;
+
+    try {
+      await http.post(
+        tpath(org.slug, `/sales/invoices/${inv.id}/register_payment/`),
+        {
+          amount,
+          date: dateStr,
+        }
+      );
+      await loadInvoices();
+      setToast({
+        kind: "success",
+        msg: `Cobro registrado para la factura ${inv.series || ""}${
+          inv.number
+        }.`,
+      });
+    } catch (err) {
+      console.error(err);
+      setToast({
+        kind: "error",
+        msg: "No se pudo registrar el cobro.",
+      });
+    }
+  };
+
+  // --- Tabs --------------------------------------------------------
+
+  function QuotesTab() {
+    const [search, setSearch] = useState("");
+
+    const filteredQuotes = useMemo(() => {
+      const term = search.trim().toLowerCase();
+      if (!term) return quotes;
+      return quotes.filter((q) => {
+        const num = String(q.number || "").toLowerCase();
+        const cust = displayContactName(
+          q.customer_detail || q.customer
+        )?.toLowerCase();
+        return num.includes(term) || cust.includes(term);
+      });
+    }, [quotes, search]);
+
+    return (
+      <div className="space-y-3">
+        <div className="flex flex-wrap items-end justify-between gap-3">
+          <div className="space-y-1">
+            <h2 className="font-medium text-sm">Presupuestos</h2>
+            <p className="text-xs text-gray-600">
+              Lista de presupuestos y acciones básicas (enviar, aceptar,
+              rechazar, convertir).
+            </p>
+          </div>
+          <div className="flex flex-wrap items-end gap-2">
+            <div className="space-y-1">
+              <label className="text-xs font-medium">Buscar</label>
+              <input
+                type="text"
+                className="border rounded px-2 py-1 text-sm"
+                placeholder="Número o cliente…"
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+              />
+            </div>
+            <button
+              type="button"
+              className="text-xs px-3 py-1 border rounded hover:bg-gray-50"
+              onClick={() => {
+                setQuoteModalMode("create");
+                setQuoteToEdit(null);
+                setQuoteModalOpen(true);
+              }}
+            >
+              Nuevo presupuesto
+            </button>
+          </div>
         </div>
-      )}
-    </div>
-  );
-}
 
-export default function FinancePage() {
+        {loadingQuotes ? (
+          <p className="text-sm text-gray-600">Cargando presupuestos…</p>
+        ) : filteredQuotes.length === 0 ? (
+          <p className="text-sm text-gray-600">
+            No hay presupuestos que coincidan con el filtro.
+          </p>
+        ) : (
+          <div className="border rounded overflow-auto">
+            <table className="min-w-full text-xs md:text-sm">
+              <thead className="bg-gray-50">
+                <tr>
+                  <th className="px-3 py-2 text-left font-medium">Número</th>
+                  <th className="px-3 py-2 text-left font-medium">Fecha</th>
+                  <th className="px-3 py-2 text-left font-medium">Cliente</th>
+                  <th className="px-3 py-2 text-right font-medium">Base</th>
+                  <th className="px-3 py-2 text-right font-medium">IVA</th>
+                  <th className="px-3 py-2 text-right font-medium">Total</th>
+                  <th className="px-3 py-2 text-center font-medium">Estado</th>
+                  <th className="px-3 py-2 text-center font-medium">Factura</th>
+                  <th className="px-3 py-2 text-right font-medium">Acciones</th>
+                </tr>
+              </thead>
+              <tbody>
+                {filteredQuotes.map((q) => (
+                  <tr key={q.id} className="border-t">
+                    <td className="px-3 py-2">{q.number}</td>
+                    <td className="px-3 py-2">{q.date}</td>
+                    <td className="px-3 py-2">
+                      {displayContactName(q.customer_detail || q.customer)}
+                    </td>
+                    <td className="px-3 py-2 text-right">
+                      {formatMoney(q.totals_base)}
+                    </td>
+                    <td className="px-3 py-2 text-right">
+                      {formatMoney(q.totals_tax)}
+                    </td>
+                    <td className="px-3 py-2 text-right">
+                      {formatMoney(q.total)}
+                    </td>
+                    <td className="px-3 py-2 text-center">
+                      <span className="inline-flex px-2 py-0.5 rounded-full text-[11px] bg-gray-100">
+                        {q.status}
+                      </span>
+                    </td>
+                    <td className="px-3 py-2 text-center">
+                      {q.invoice_id ? (
+                        <span className="text-xs text-gray-700">
+                          #{q.invoice_id}
+                        </span>
+                      ) : (
+                        <span className="text-xs text-gray-400">—</span>
+                      )}
+                    </td>
+                    <td className="px-3 py-2 text-right space-x-2">
+                      {/* Editar cabecera */}
+                      <button
+                        type="button"
+                        className="text-[11px] underline"
+                        onClick={() => {
+                          setQuoteModalMode("edit");
+                          setQuoteToEdit(q);
+                          setQuoteModalOpen(true);
+                        }}
+                      >
+                        Editar
+                      </button>
+
+                      {/* Duplicar presupuesto */}
+                      <button
+                        type="button"
+                        className="text-[11px] underline"
+                        onClick={() => handleDuplicateQuote(q)}
+                      >
+                        Duplicar
+                      </button>
+
+                      <button
+                        type="button"
+                        className="text-[11px] underline"
+                        onClick={() => handleQuoteStatus(q, "mark_sent")}
+                      >
+                        Enviar
+                      </button>
+                      <button
+                        type="button"
+                        className="text-[11px] underline"
+                        onClick={() => handleQuoteStatus(q, "mark_accepted")}
+                      >
+                        Aceptar
+                      </button>
+                      <button
+                        type="button"
+                        className="text-[11px] underline text-red-600"
+                        onClick={() => handleQuoteStatus(q, "mark_rejected")}
+                      >
+                        Rechazar
+                      </button>
+
+                      {!q.invoice_id && (
+                        <button
+                          type="button"
+                          className="text-[11px] underline font-medium"
+                          onClick={() => handleQuoteToInvoice(q)}
+                        >
+                          A factura
+                        </button>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  function DeliveryNotesTab() {
+    return (
+      <div className="space-y-3">
+        <div className="flex items-center justify-between">
+          <div>
+            <h2 className="font-medium text-sm">Albaranes</h2>
+            <p className="text-xs text-gray-600">
+              Lista de albaranes (de momento solo lectura). Más adelante los
+              enlazaremos mejor con inventario y facturas.
+            </p>
+          </div>
+        </div>
+
+        {loadingDN ? (
+          <p className="text-sm text-gray-600">Cargando albaranes…</p>
+        ) : deliveryNotes.length === 0 ? (
+          <p className="text-sm text-gray-600">No hay albaranes registrados.</p>
+        ) : (
+          <div className="border rounded overflow-auto">
+            <table className="min-w-full text-xs md:text-sm">
+              <thead className="bg-gray-50">
+                <tr>
+                  <th className="px-3 py-2 text-left font-medium">Número</th>
+                  <th className="px-3 py-2 text-left font-medium">Fecha</th>
+                  <th className="px-3 py-2 text-left font-medium">Cliente</th>
+                  <th className="px-3 py-2 text-left font-medium">Almacén</th>
+                  <th className="px-3 py-2 text-center font-medium">Estado</th>
+                </tr>
+              </thead>
+              <tbody>
+                {deliveryNotes.map((dn) => (
+                  <tr key={dn.id} className="border-t">
+                    <td className="px-3 py-2">{dn.number}</td>
+                    <td className="px-3 py-2">{dn.date}</td>
+                    <td className="px-3 py-2">
+                      {displayContactName(dn.customer_detail || dn.customer)}
+                    </td>
+                    <td className="px-3 py-2">{dn.warehouse || ""}</td>
+                    <td className="px-3 py-2 text-center">
+                      <span className="inline-flex px-2 py-0.5 rounded-full text-[11px] bg-gray-100">
+                        {dn.status}
+                      </span>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  function InvoicesTab() {
+    const [search, setSearch] = useState("");
+
+    const filteredInvoices = useMemo(() => {
+      const term = search.trim().toLowerCase();
+      if (!term) return invoices;
+      return invoices.filter((inv) => {
+        const num = `${inv.series || ""}${inv.number || ""}`.toLowerCase();
+        const cust = displayContactName(
+          inv.customer_detail || inv.customer
+        )?.toLowerCase();
+        return num.includes(term) || cust.includes(term);
+      });
+    }, [invoices, search]);
+
+    return (
+      <div className="space-y-3">
+        <div className="flex flex-wrap items-end justify-between gap-3">
+          <div className="space-y-1">
+            <h2 className="font-medium text-sm">Facturas</h2>
+            <p className="text-xs text-gray-600">
+              Flujo de facturación SIF: ver, contabilizar y registrar cobros.
+              Verifactu se deja para una actualización posterior.
+            </p>
+          </div>
+          <div className="space-y-1">
+            <label className="text-xs font-medium">Buscar</label>
+            <input
+              type="text"
+              className="border rounded px-2 py-1 text-sm"
+              placeholder="Número o cliente…"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+            />
+          </div>
+        </div>
+
+        {loadingInv ? (
+          <p className="text-sm text-gray-600">Cargando facturas…</p>
+        ) : filteredInvoices.length === 0 ? (
+          <p className="text-sm text-gray-600">
+            No hay facturas que coincidan con el filtro.
+          </p>
+        ) : (
+          <div className="border rounded overflow-auto">
+            <table className="min-w-full text-xs md:text-sm">
+              <thead className="bg-gray-50">
+                <tr>
+                  <th className="px-3 py-2 text-left font-medium">Número</th>
+                  <th className="px-3 py-2 text-left font-medium">Fecha</th>
+                  <th className="px-3 py-2 text-left font-medium">Cliente</th>
+                  <th className="px-3 py-2 text-right font-medium">Base</th>
+                  <th className="px-3 py-2 text-right font-medium">IVA</th>
+                  <th className="px-3 py-2 text-right font-medium">Total</th>
+                  <th className="px-3 py-2 text-center font-medium">Estado</th>
+                  <th className="px-3 py-2 text-center font-medium">Cobro</th>
+                  <th className="px-3 py-2 text-center font-medium">
+                    Verifactu
+                  </th>
+                  <th className="px-3 py-2 text-right font-medium">Acciones</th>
+                </tr>
+              </thead>
+              <tbody>
+                {filteredInvoices.map((inv) => (
+                  <tr key={inv.id} className="border-t">
+                    <td className="px-3 py-2">
+                      {(inv.series || "") + (inv.number || "")}
+                    </td>
+                    <td className="px-3 py-2">{inv.date_issue}</td>
+                    <td className="px-3 py-2">
+                      {displayContactName(inv.customer_detail || inv.customer)}
+                    </td>
+                    <td className="px-3 py-2 text-right">
+                      {formatMoney(inv.totals_base)}
+                    </td>
+                    <td className="px-3 py-2 text-right">
+                      {formatMoney(inv.totals_tax)}
+                    </td>
+                    <td className="px-3 py-2 text-right">
+                      {formatMoney(inv.total)}
+                    </td>
+                    <td className="px-3 py-2 text-center">
+                      <span
+                        className={`inline-flex px-2 py-0.5 rounded-full text-[11px] ${
+                          inv.status === "posted"
+                            ? "bg-green-100 text-green-800"
+                            : inv.status === "cancelled"
+                            ? "bg-red-100 text-red-700"
+                            : "bg-gray-100 text-gray-800"
+                        }`}
+                      >
+                        {inv.status}
+                      </span>
+                    </td>
+                    <td className="px-3 py-2 text-center">
+                      <span className="inline-flex px-2 py-0.5 rounded-full text-[11px] bg-gray-100">
+                        {inv.payment_status || "pending"}
+                      </span>
+                    </td>
+                    <td className="px-3 py-2 text-center">
+                      <span className="inline-flex px-2 py-0.5 rounded-full text-[11px] bg-gray-100">
+                        {inv.verifactu_status || "pending"}
+                      </span>
+                    </td>
+                    <td className="px-3 py-2 text-right space-x-2">
+                      {inv.status !== "posted" && (
+                        <button
+                          type="button"
+                          className="text-[11px] underline font-medium"
+                          onClick={() => handlePostInvoice(inv)}
+                        >
+                          Contabilizar
+                        </button>
+                      )}
+                      <button
+                        type="button"
+                        className="text-[11px] underline"
+                        onClick={() => handleRegisterPayment(inv)}
+                      >
+                        Cobro
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+    );
+  }
+
   const tabs = useMemo(
     () => [
       { key: "quotes", label: "Presupuestos", content: QuotesTab },
       { key: "delivery", label: "Albaranes", content: DeliveryNotesTab },
       { key: "invoices", label: "Facturas", content: InvoicesTab },
     ],
-    []
+    [quotes, deliveryNotes, invoices, loadingQuotes, loadingDN, loadingInv]
   );
 
   return (
-    <section className="space-y-4">
-      <h1 className="text-xl font-semibold">Finanzas</h1>
+    <section className="p-4 space-y-4">
+      <header>
+        <h1 className="text-lg font-semibold">Finanzas</h1>
+        <p className="text-xs text-gray-600">
+          Presupuestos, albaranes y facturas. Flujo de facturación SIF listo;
+          Verifactu llegará en una actualización posterior.
+        </p>
+      </header>
+
+      {toast?.msg && (
+        <Toast
+          kind={toast.kind || "error"}
+          msg={toast.msg}
+          onClose={() => setToast(null)}
+        />
+      )}
+
       <Tabs tabs={tabs} initial={0} />
+
+      {/* Modal de presupuesto (create/edit) */}
+      <QuoteModal
+        open={quoteModalOpen}
+        mode={quoteModalMode}
+        initial={quoteToEdit}
+        onClose={() => {
+          setQuoteModalOpen(false);
+          setQuoteToEdit(null);
+        }}
+        onSaved={async () => {
+          await loadQuotes();
+        }}
+      />
     </section>
   );
 }
