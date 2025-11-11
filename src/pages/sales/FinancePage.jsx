@@ -372,6 +372,12 @@ export default function FinancePage() {
     setInvoiceModalOpen(true);
   };
 
+  const handleOpenInvoicePdf = (inv) => {
+    if (!org?.slug || !inv?.id) return;
+    const url = tpath(org.slug, `/sales/invoices/${inv.id}/print/`);
+    window.open(url, "_blank", "noopener,noreferrer");
+  };
+
   // --- Acciones de Albarán ---------------------------------------
   const handleConfirmDeliveryNote = async (dn) => {
     if (!org?.slug) return;
@@ -881,12 +887,21 @@ export default function FinancePage() {
                           </button>
                         </>
                       )}
+
                       <button
                         type="button"
                         className="text-[11px] underline"
                         onClick={() => handleRegisterPayment(inv)}
                       >
                         Cobro
+                      </button>
+
+                      <button
+                        type="button"
+                        className="text-[11px] underline"
+                        onClick={() => handleOpenInvoicePdf(inv)}
+                      >
+                        PDF
                       </button>
                     </td>
                   </tr>
