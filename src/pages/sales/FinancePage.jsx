@@ -6,6 +6,7 @@ import { tpath } from "../../lib/tenantPath";
 import Toast from "../../components/Toast.jsx";
 import Tabs from "../../components/ui/Tabs.jsx";
 import QuoteModal from "../../components/sales/QuoteModal.jsx";
+import InvoiceLinesModal from "../../components/sales/InvoiceLinesModal.jsx";
 
 function displayContactName(c) {
   if (!c) return "";
@@ -41,6 +42,10 @@ export default function FinancePage() {
   const [quoteModalOpen, setQuoteModalOpen] = useState(false);
   const [quoteModalMode, setQuoteModalMode] = useState("create"); // "create" | "edit"
   const [quoteToEdit, setQuoteToEdit] = useState(null);
+
+  // Modal de factura (editar líneas)
+  const [invoiceModalOpen, setInvoiceModalOpen] = useState(false);
+  const [invoiceToEdit, setInvoiceToEdit] = useState(null);
 
   // --- Loaders ----------------------------------------------------
 
@@ -333,6 +338,40 @@ export default function FinancePage() {
     }
   };
 
+  const handleDeleteQuote = async (quote) => {
+    if (!org?.slug) return;
+
+    if (
+      !window.confirm(
+        `¿Eliminar el presupuesto ${quote.number}? Esta acción no se puede deshacer.`
+      )
+    ) {
+      return;
+    }
+
+    try {
+      await http.delete(tpath(org.slug, `/sales/quotes/${quote.id}/`));
+      setQuotes((prev) => prev.filter((q) => q.id !== quote.id));
+      setToast({
+        kind: "success",
+        msg: `Presupuesto ${quote.number} eliminado correctamente.`,
+      });
+    } catch (err) {
+      console.error(err);
+      setToast({
+        kind: "error",
+        msg: "No se pudo eliminar el presupuesto.",
+      });
+    }
+  };
+
+  const handleEditInvoice = (inv) => {
+    if (!org?.slug) return;
+    if (inv.status === "posted") return; // por si acaso
+    setInvoiceToEdit(inv);
+    setInvoiceModalOpen(true);
+  };
+
   // --- Tabs --------------------------------------------------------
 
   function QuotesTab() {
@@ -481,6 +520,14 @@ export default function FinancePage() {
                         onClick={() => handleQuoteStatus(q, "mark_rejected")}
                       >
                         Rechazar
+                      </button>
+                      {/* Eliminar presupuesto */}
+                      <button
+                        type="button"
+                        className="text-[11px] underline text-red-600"
+                        onClick={() => handleDeleteQuote(q)}
+                      >
+                        Eliminar
                       </button>
 
                       {!q.invoice_id && (
@@ -662,13 +709,22 @@ export default function FinancePage() {
                     </td>
                     <td className="px-3 py-2 text-right space-x-2">
                       {inv.status !== "posted" && (
-                        <button
-                          type="button"
-                          className="text-[11px] underline font-medium"
-                          onClick={() => handlePostInvoice(inv)}
-                        >
-                          Contabilizar
-                        </button>
+                        <>
+                          <button
+                            type="button"
+                            className="text-[11px] underline"
+                            onClick={() => handleEditInvoice(inv)}
+                          >
+                            Editar
+                          </button>
+                          <button
+                            type="button"
+                            className="text-[11px] underline font-medium"
+                            onClick={() => handlePostInvoice(inv)}
+                          >
+                            Contabilizar
+                          </button>
+                        </>
                       )}
                       <button
                         type="button"
@@ -728,6 +784,17 @@ export default function FinancePage() {
         }}
         onSaved={async () => {
           await loadQuotes();
+        }}
+      />
+      <InvoiceLinesModal
+        open={invoiceModalOpen}
+        invoice={invoiceToEdit}
+        onClose={() => {
+          setInvoiceModalOpen(false);
+          setInvoiceToEdit(null);
+        }}
+        onSaved={async () => {
+          await loadInvoices();
         }}
       />
     </section>

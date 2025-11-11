@@ -41,22 +41,16 @@ export default function QuoteModal({
 
   // formulario
   const [customerId, setCustomerId] = useState("");
-  const [number, setNumber] = useState(""); // número de presupuesto
+  const [number, setNumber] = useState("");
   const [date, setDate] = useState("");
   const [notes, setNotes] = useState("");
 
-  // líneas (solo se usan en create de momento)
-  const [lines, setLines] = useState([
-    {
-      product: "",
-      description: "",
-      qty: "1",
-      price: "0.00",
-      tax_rate: "21.00",
-    },
-  ]);
+  // líneas (con UOM)
+  const [lines, setLines] = useState([]);
 
-  // cargar combos (clientes, productos) al abrir
+  const isEdit = mode === "edit";
+
+  // Cargar combos + rellenar formulario
   useEffect(() => {
     if (!open || !org?.slug) return;
 
@@ -76,43 +70,31 @@ export default function QuoteModal({
           ? cData.results
           : Array.isArray(cData)
           ? cData
-          : cData?.items ?? [];
-
+          : [];
         const productItems = Array.isArray(pData?.results)
           ? pData.results
           : Array.isArray(pData)
           ? pData
-          : pData?.items ?? [];
+          : [];
 
         setCustomers(clientItems);
         setProducts(productItems);
 
+        // Rellenar formulario según modo
         if (mode === "create") {
-          // defaults para nuevo presupuesto
-          const year = new Date().getFullYear();
-          setNumber(`P-${year}-0001`);
+          setNumber("");
           setDate(today);
           setNotes("");
 
           if (clientItems.length > 0) {
             setCustomerId(String(clientItems[0].id));
+          } else {
+            setCustomerId("");
           }
-
-          setLines([
-            {
-              product: productItems[0]?.id ?? "",
-              description: productItems[0]?.name ?? "",
-              qty: "1",
-              price: productItems[0]?.price
-                ? String(productItems[0].price)
-                : "0.00",
-              tax_rate: productItems[0]?.tax_rate
-                ? String(productItems[0].tax_rate)
-                : "21.00",
-            },
-          ]);
+          // No pre-cargamos ninguna línea, el usuario añade la primera
+          setLines([]);
         } else if (mode === "edit" && initial) {
-          // rellenar la cabecera desde el presupuesto existente
+          // Cabecera
           setNumber(initial.number || "");
           setDate(initial.date || today);
           setNotes(initial.notes || "");
@@ -127,10 +109,46 @@ export default function QuoteModal({
             setCustomerId(String(custId));
           } else if (clientItems.length > 0) {
             setCustomerId(String(clientItems[0].id));
+          } else {
+            setCustomerId("");
           }
 
-          // De momento NO editamos líneas en el backend
-          setLines([]);
+          // Líneas existentes del presupuesto
+          const mappedLines = Array.isArray(initial.lines)
+            ? initial.lines.map((ln) => ({
+                id: ln.id,
+                product: ln.product || "",
+                description: ln.description || "",
+                qty:
+                  ln.qty !== undefined && ln.qty !== null
+                    ? String(ln.qty)
+                    : "1",
+                uom: ln.uom || "", // 👈 sin “unidad”
+                price:
+                  ln.unit_price !== undefined && ln.unit_price !== null
+                    ? String(ln.unit_price)
+                    : "0.00",
+                tax_rate:
+                  ln.tax_rate !== undefined && ln.tax_rate !== null
+                    ? String(ln.tax_rate)
+                    : "21.00",
+              }))
+            : [];
+
+          if (mappedLines.length) {
+            setLines(mappedLines);
+          } else {
+            setLines([
+              {
+                product: "",
+                description: "",
+                qty: "1",
+                uom: "",
+                price: "0.00",
+                tax_rate: "21.00",
+              },
+            ]);
+          }
         }
       })
       .catch((err) => {
@@ -146,7 +164,7 @@ export default function QuoteModal({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, org?.slug, mode, initial]);
 
-  // Totales solo tienen sentido en create (porque trabajamos con líneas)
+  // Totales
   const totals = useMemo(() => {
     let base = 0;
     let tax = 0;
@@ -154,8 +172,8 @@ export default function QuoteModal({
       const qty = Number(ln.qty) || 0;
       const price = Number(ln.price) || 0;
       const lineBase = qty * price;
-      const rate = Number(ln.tax_rate) || 0;
-      const lineTax = (lineBase * rate) / 100;
+      const lineTaxRate = Number(ln.tax_rate) || 0;
+      const lineTax = (lineBase * lineTaxRate) / 100;
       base += lineBase;
       tax += lineTax;
     }
@@ -166,10 +184,6 @@ export default function QuoteModal({
     };
   }, [lines]);
 
-  if (!open) return null;
-
-  // --- handlers ----------------------------------------------------
-
   const handleLineChange = (index, field, value) => {
     setLines((prev) =>
       prev.map((ln, i) => (i === index ? { ...ln, [field]: value } : ln))
@@ -178,6 +192,8 @@ export default function QuoteModal({
 
   const handleSelectProduct = (index, productId) => {
     const p = products.find((x) => String(x.id) === String(productId));
+    const productUom = p?.uom ?? ""; // 👈 cogemos tal cual venga del backend
+
     setLines((prev) =>
       prev.map((ln, i) =>
         i === index
@@ -189,6 +205,7 @@ export default function QuoteModal({
               tax_rate: p?.tax_rate
                 ? String(p.tax_rate)
                 : ln.tax_rate ?? "21.00",
+              uom: productUom || ln.uom || "",
             }
           : ln
       )
@@ -196,16 +213,18 @@ export default function QuoteModal({
   };
 
   const addLine = () => {
+    const p0 = products[0];
+    const productUom = p0?.uom ?? "";
+
     setLines((prev) => [
       ...prev,
       {
-        product: products[0]?.id ?? "",
-        description: products[0]?.name ?? "",
+        product: p0?.id ?? "",
+        description: p0?.name ?? "",
         qty: "1",
-        price: products[0]?.price ? String(products[0].price) : "0.00",
-        tax_rate: products[0]?.tax_rate
-          ? String(products[0].tax_rate)
-          : "21.00",
+        uom: productUom,
+        price: p0?.price ? String(p0.price) : "0.00",
+        tax_rate: p0?.tax_rate ? String(p0.tax_rate) : "21.00",
       },
     ]);
   };
@@ -217,41 +236,45 @@ export default function QuoteModal({
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (!org?.slug) return;
-
     if (!customerId) {
-      setToast({ kind: "error", msg: "Debes seleccionar un cliente." });
-      return;
-    }
-    if (!number.trim()) {
       setToast({
         kind: "error",
-        msg: "Debes indicar un número de presupuesto.",
-      });
-      return;
-    }
-    if (mode === "create" && !lines.length) {
-      setToast({
-        kind: "error",
-        msg: "Debe haber al menos una línea en el presupuesto.",
+        msg: "Selecciona un cliente antes de guardar.",
       });
       return;
     }
 
-    setLoading(true);
-    setToast(null);
+    // Validación mínima líneas
+    const activeLines = lines.filter(
+      (ln) => ln.product || ln.description.trim() !== ""
+    );
+    if (!activeLines.length) {
+      setToast({
+        kind: "error",
+        msg: "El presupuesto debe tener al menos una línea.",
+      });
+      return;
+    }
+
+    const payloadHeader = {
+      customer: customerId,
+      date,
+      notes,
+    };
+
+    if (number && number.trim() !== "") {
+      payloadHeader.number = number.trim();
+    }
 
     try {
-      const headerPayload = {
-        number: number.trim(),
-        customer: Number(customerId),
-        date,
-      };
+      setLoading(true);
+      setToast(null);
 
       if (mode === "create") {
-        // 1) Crear la CABECERA del presupuesto
+        // 1) Crear CABECERA
         const quoteRes = await http.post(
           tpath(org.slug, "/sales/quotes/"),
-          headerPayload
+          payloadHeader
         );
         const quoteId = quoteRes.data?.id;
         if (!quoteId) {
@@ -260,14 +283,13 @@ export default function QuoteModal({
           );
         }
 
-        // 2) Añadir LÍNEAS con el action /sales/quotes/{id}/add_line/
-        for (const ln of lines) {
-          if (!ln.product && !ln.description) continue;
-
+        // 2) Añadir LÍNEAS con add_line
+        for (const ln of activeLines) {
           const linePayload = {
             product: ln.product || null,
             description: ln.description,
             qty: Number(ln.qty) || 0,
+            uom: ln.uom || null,
             unit_price: Number(ln.price) || 0,
             tax_rate: Number(ln.tax_rate) || 0,
           };
@@ -278,10 +300,25 @@ export default function QuoteModal({
           );
         }
       } else if (mode === "edit" && initial?.id) {
-        // De momento solo actualizamos la CABECERA (número, cliente, fecha)
+        // 1) Actualizar CABECERA
         await http.patch(
           tpath(org.slug, `/sales/quotes/${initial.id}/`),
-          headerPayload
+          payloadHeader
+        );
+
+        // 2) Reemplazar LÍNEAS completas
+        const linesPayload = activeLines.map((ln) => ({
+          product: ln.product || null,
+          description: ln.description,
+          qty: Number(ln.qty) || 0,
+          uom: ln.uom || null,
+          unit_price: Number(ln.price) || 0,
+          tax_rate: Number(ln.tax_rate) || 0,
+        }));
+
+        await http.post(
+          tpath(org.slug, `/sales/quotes/${initial.id}/replace_lines/`),
+          { lines: linesPayload }
         );
       }
 
@@ -289,20 +326,15 @@ export default function QuoteModal({
       onClose?.();
     } catch (err) {
       console.error("Error al guardar presupuesto:", err);
-      const status = err?.response?.status;
-      const data = err?.response?.data;
+      let friendly =
+        "No se ha podido guardar el presupuesto. Revisa los datos o inténtalo más tarde.";
 
-      let friendly = "Error al guardar el presupuesto.";
-
-      // Si viene respuesta del backend, intentamos sacar algo decente
-      if (data) {
-        // 🔹 Caso 1: respuesta HTML / tochaco del debug de Django
+      const resp = err?.response;
+      if (resp) {
+        const { status, data } = resp;
         if (typeof data === "string") {
           const lower = data.toLowerCase();
-
-          // Intentamos detectar el caso de clave duplicada
           if (
-            lower.includes("llave duplicada") ||
             lower.includes("duplicate key") ||
             lower.includes("unicidad") ||
             lower.includes("unique constraint")
@@ -310,16 +342,12 @@ export default function QuoteModal({
             friendly =
               "Ya existe un presupuesto con ese número. Cambia el número y vuelve a guardar.";
           } else if (!lower.includes("<html") && data.length < 200) {
-            // Si es un string corto y no parece HTML, lo usamos tal cual
             friendly = data;
           } else if (status >= 500) {
-            // Error 5xx genérico
             friendly =
               "Se ha producido un error interno al guardar el presupuesto. Prueba más tarde.";
           }
-        }
-        // 🔹 Caso 2: respuesta JSON de validación normal
-        else if (typeof data === "object") {
+        } else if (typeof data === "object") {
           if (Array.isArray(data.non_field_errors)) {
             friendly = data.non_field_errors.join(" ");
           } else if (Array.isArray(data.number)) {
@@ -338,17 +366,24 @@ export default function QuoteModal({
     }
   };
 
-  // --- render ------------------------------------------------------
-
-  const isEdit = mode === "edit";
+  if (!open) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
-      <div className="bg-white rounded-lg shadow-lg w-full max-w-4xl max-h-[90vh] flex flex-col">
-        <div className="px-4 py-3 border-b flex items-center justify-between">
-          <h2 className="font-semibold text-sm">
-            {mode === "create" ? "Nuevo presupuesto" : "Editar presupuesto"}
-          </h2>
+    <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/40">
+      <div className="bg-white rounded-xl shadow-lg w-full max-w-4xl max-h-[90vh] flex flex-col">
+        <header className="px-4 py-3 border-b flex items-center justify-between">
+          <div>
+            <h2 className="text-sm font-semibold">
+              {isEdit ? "Editar presupuesto" : "Nuevo presupuesto"}
+            </h2>
+            <p className="text-xs text-gray-600">
+              {isEdit && initial
+                ? `Cliente: ${displayContactName(
+                    initial.customer_detail || initial.customer
+                  )}`
+                : "Crea o edita un presupuesto de venta."}
+            </p>
+          </div>
           <button
             type="button"
             className="text-xs text-gray-500 hover:text-black"
@@ -357,12 +392,12 @@ export default function QuoteModal({
           >
             Cerrar
           </button>
-        </div>
+        </header>
 
-        {toast?.msg && (
-          <div className="px-4 pt-3">
+        {toast && (
+          <div className="px-4 pt-2">
             <Toast
-              kind={toast.kind || "error"}
+              kind={toast.kind}
               msg={toast.msg}
               onClose={() => setToast(null)}
             />
@@ -370,270 +405,257 @@ export default function QuoteModal({
         )}
 
         <form
-          className="px-4 pb-4 pt-2 flex-1 flex flex-col gap-3"
           onSubmit={handleSubmit}
+          className="flex-1 flex flex-col gap-3 px-4 pb-4 pt-2"
         >
           {/* Cabecera */}
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
-            <div className="space-y-1">
-              <label className="text-xs font-medium">Número</label>
-              <input
-                type="text"
-                className="border rounded px-2 py-1 text-sm w-full"
-                value={number}
-                onChange={(e) => setNumber(e.target.value)}
-                placeholder="Ej: P-2025-0001"
-              />
-            </div>
-
-            <div className="space-y-1 md:col-span-2">
-              <label className="text-xs font-medium">Cliente</label>
-              {loadingRefs ? (
-                <p className="text-xs text-gray-500">Cargando clientes…</p>
-              ) : customers.length === 0 ? (
-                <p className="text-xs text-gray-500">
-                  No hay clientes. Crea alguno en el módulo de contactos.
-                </p>
-              ) : (
-                <select
-                  className="border rounded px-2 py-1 text-sm w-full"
-                  value={customerId}
-                  onChange={(e) => setCustomerId(e.target.value)}
-                >
-                  {customers.map((c) => (
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-3 text-xs">
+            <div className="flex flex-col gap-1">
+              <label className="font-medium">Cliente</label>
+              <select
+                className="border rounded px-2 py-1 text-xs"
+                value={customerId}
+                onChange={(e) => setCustomerId(e.target.value)}
+                disabled={loadingRefs || loading}
+              >
+                {loadingRefs && <option>Cargando clientes…</option>}
+                {!loadingRefs && customers.length === 0 && (
+                  <option value="">No hay clientes</option>
+                )}
+                {!loadingRefs &&
+                  customers.map((c) => (
                     <option key={c.id} value={c.id}>
                       {displayContactName(c)}
                     </option>
                   ))}
-                </select>
-              )}
+              </select>
             </div>
 
-            <div className="space-y-1">
-              <label className="text-xs font-medium">Fecha</label>
+            <div className="flex flex-col gap-1">
+              <label className="font-medium">Número</label>
+              <input
+                type="text"
+                className="border rounded px-2 py-1 text-xs"
+                placeholder="(auto)"
+                value={number}
+                onChange={(e) => setNumber(e.target.value)}
+                disabled={loading}
+              />
+              <p className="text-[10px] text-gray-500">
+                Si lo dejas vacío, se numerará automáticamente.
+              </p>
+            </div>
+
+            <div className="flex flex-col gap-1">
+              <label className="font-medium">Fecha</label>
               <input
                 type="date"
-                className="border rounded px-2 py-1 text-sm w-full"
+                className="border rounded px-2 py-1 text-xs"
                 value={date}
                 onChange={(e) => setDate(e.target.value)}
+                disabled={loading}
               />
             </div>
           </div>
 
-          <div className="space-y-1">
-            <label className="text-xs font-medium">Notas internas</label>
-            <input
-              type="text"
-              className="border rounded px-2 py-1 text-sm w-full"
+          <div className="flex flex-col gap-1 text-xs">
+            <label className="font-medium">Notas</label>
+            <textarea
+              className="border rounded px-2 py-1 text-xs min-h-[60px]"
               value={notes}
               onChange={(e) => setNotes(e.target.value)}
-              placeholder="(de momento no se guarda en backend)"
+              disabled={loading}
+              placeholder="Condiciones, observaciones…"
             />
           </div>
 
-          {/* Líneas: solo en modo create (en edit aún no tocamos líneas) */}
-          {!isEdit && (
-            <>
-              <div className="flex-1 flex flex-col gap-2 min-h-[200px]">
-                <div className="flex items-center justify-between">
-                  <h3 className="text-xs font-semibold">Líneas</h3>
-                  <button
-                    type="button"
-                    className="text-xs px-2 py-1 border rounded hover:bg-gray-50"
-                    onClick={addLine}
-                    disabled={loadingRefs || loading}
-                  >
-                    Añadir línea
-                  </button>
-                </div>
+          {/* Líneas (create + edit, con UOM) */}
+          <div className="flex-1 flex flex-col gap-2 min-h-[200px]">
+            <div className="flex items-center justify-between">
+              <h3 className="text-xs font-semibold">Líneas</h3>
+              <button
+                type="button"
+                className="text-xs px-2 py-1 border rounded hover:bg-gray-50"
+                onClick={addLine}
+                disabled={loading}
+              >
+                Añadir línea
+              </button>
+            </div>
 
-                <div className="border rounded flex-1 overflow-auto">
-                  <table className="min-w-full text-[11px]">
-                    <thead className="bg-gray-50">
-                      <tr>
-                        <th className="px-2 py-1 text-left font-medium">
-                          Producto
-                        </th>
-                        <th className="px-2 py-1 text-left font-medium">
-                          Descripción
-                        </th>
-                        <th className="px-2 py-1 text-right font-medium">
-                          Cant.
-                        </th>
-                        <th className="px-2 py-1 text-right font-medium">
-                          Precio
-                        </th>
-                        <th className="px-2 py-1 text-right font-medium">
-                          IVA %
-                        </th>
-                        <th className="px-2 py-1 text-right font-medium">
-                          Importe
-                        </th>
-                        <th className="px-2 py-1 text-right font-medium"> </th>
+            <div className="border rounded flex-1 overflow-auto">
+              <table className="min-w-full text-[11px]">
+                <thead className="bg-gray-50">
+                  <tr>
+                    <th className="px-2 py-1 text-left font-medium">
+                      Producto
+                    </th>
+                    <th className="px-2 py-1 text-left font-medium">
+                      Descripción
+                    </th>
+                    <th className="px-2 py-1 text-left font-medium">Uds</th>
+                    <th className="px-2 py-1 text-right font-medium">Cant.</th>
+                    <th className="px-2 py-1 text-right font-medium">
+                      Precio (€)
+                    </th>
+                    <th className="px-2 py-1 text-right font-medium">IVA %</th>
+                    <th className="px-2 py-1 text-right font-medium">
+                      Importe (€)
+                    </th>
+                    <th className="px-2 py-1 text-right font-medium"> </th>
+                  </tr>
+                </thead>
+
+                <tbody>
+                  {lines.map((ln, index) => {
+                    const qty = Number(ln.qty) || 0;
+                    const price = Number(ln.price) || 0;
+                    const lineBase = qty * price;
+
+                    return (
+                      <tr key={index} className="border-t">
+                        {/* Producto */}
+                        <td className="px-2 py-1">
+                          <select
+                            className="border rounded px-1 py-0.5 text-[11px] w-full"
+                            value={ln.product || ""}
+                            onChange={(e) =>
+                              handleSelectProduct(index, e.target.value)
+                            }
+                          >
+                            <option value="">(sin producto)</option>
+                            {products.map((p) => (
+                              <option key={p.id} value={p.id}>
+                                {p.name}
+                              </option>
+                            ))}
+                          </select>
+                        </td>
+
+                        {/* Descripción */}
+                        <td className="px-2 py-1">
+                          <input
+                            type="text"
+                            className="border rounded px-1 py-0.5 text-[11px] w-full"
+                            value={ln.description}
+                            onChange={(e) =>
+                              handleLineChange(
+                                index,
+                                "description",
+                                e.target.value
+                              )
+                            }
+                          />
+                        </td>
+
+                        {/* Uds */}
+                        <td className="px-2 py-1">
+                          <input
+                            type="text"
+                            className="border rounded px-1 py-0.5 text-[11px] w-20"
+                            value={ln.uom || ""}
+                            onChange={(e) =>
+                              handleLineChange(index, "uom", e.target.value)
+                            }
+                          />
+                        </td>
+
+                        {/* Cantidad */}
+                        <td className="px-2 py-1 text-right">
+                          <input
+                            type="number"
+                            step="1"
+                            min="0"
+                            className="border rounded px-1 py-0.5 text-[11px] w-20 text-right"
+                            value={ln.qty}
+                            onChange={(e) =>
+                              handleLineChange(index, "qty", e.target.value)
+                            }
+                          />
+                        </td>
+
+                        {/* Precio */}
+                        <td className="px-2 py-1 text-right">
+                          <input
+                            type="number"
+                            step="0.01"
+                            min="0"
+                            className="border rounded px-1 py-0.5 text-[11px] w-24 text-right"
+                            value={ln.price}
+                            onChange={(e) =>
+                              handleLineChange(index, "price", e.target.value)
+                            }
+                          />
+                        </td>
+
+                        {/* IVA */}
+                        <td className="px-2 py-1 text-right">
+                          <input
+                            type="number"
+                            step="0.01"
+                            min="0"
+                            className="border rounded px-1 py-0.5 text-[11px] w-20 text-right"
+                            value={ln.tax_rate}
+                            onChange={(e) =>
+                              handleLineChange(
+                                index,
+                                "tax_rate",
+                                e.target.value
+                              )
+                            }
+                          />
+                        </td>
+
+                        {/* Importe */}
+                        <td className="px-2 py-1 text-right">
+                          {formatMoney(lineBase)}
+                        </td>
+
+                        {/* Quitar */}
+                        <td className="px-2 py-1 text-right">
+                          {lines.length > 1 && (
+                            <button
+                              type="button"
+                              className="text-[11px] text-red-600 underline"
+                              onClick={() => removeLine(index)}
+                            >
+                              Quitar
+                            </button>
+                          )}
+                        </td>
                       </tr>
-                    </thead>
-                    <tbody>
-                      {lines.map((ln, index) => {
-                        const qty = Number(ln.qty) || 0;
-                        const price = Number(ln.price) || 0;
-                        const lineBase = qty * price;
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
 
-                        return (
-                          <tr key={index} className="border-t">
-                            <td className="px-2 py-1">
-                              {products.length === 0 ? (
-                                <span className="text-[11px] text-gray-500">
-                                  Sin productos
-                                </span>
-                              ) : (
-                                <select
-                                  className="border rounded px-1 py-0.5 text-[11px] w-full"
-                                  value={ln.product}
-                                  onChange={(e) =>
-                                    handleSelectProduct(index, e.target.value)
-                                  }
-                                >
-                                  {products.map((p) => (
-                                    <option key={p.id} value={p.id}>
-                                      {p.sku} · {p.name}
-                                    </option>
-                                  ))}
-                                </select>
-                              )}
-                            </td>
-                            <td className="px-2 py-1">
-                              <input
-                                type="text"
-                                className="border rounded px-1 py-0.5 text-[11px] w-full"
-                                value={ln.description}
-                                onChange={(e) =>
-                                  handleLineChange(
-                                    index,
-                                    "description",
-                                    e.target.value
-                                  )
-                                }
-                              />
-                            </td>
-                            <td className="px-2 py-1 text-right">
-                              <input
-                                type="number"
-                                // 🎯 Cantidad: pasos de 1 (unidades contables: ruedas, panes…)
-                                step="1"
-                                min="0"
-                                className="border rounded px-1 py-0.5 text-[11px] w-20 text-right"
-                                value={ln.qty}
-                                onChange={(e) =>
-                                  handleLineChange(index, "qty", e.target.value)
-                                }
-                              />
-                            </td>
-                            <td className="px-2 py-1 text-right">
-                              <input
-                                type="number"
-                                // 🎯 Precio con dos decimales típicos
-                                step="0.01"
-                                min="0"
-                                className="border rounded px-1 py-0.5 text-[11px] w-24 text-right"
-                                value={ln.price}
-                                onChange={(e) =>
-                                  handleLineChange(
-                                    index,
-                                    "price",
-                                    e.target.value
-                                  )
-                                }
-                              />
-                            </td>
-                            <td className="px-2 py-1 text-right">
-                              <input
-                                type="number"
-                                step="0.01"
-                                min="0"
-                                className="border rounded px-1 py-0.5 text-[11px] w-20 text-right"
-                                value={ln.tax_rate}
-                                onChange={(e) =>
-                                  handleLineChange(
-                                    index,
-                                    "tax_rate",
-                                    e.target.value
-                                  )
-                                }
-                              />
-                            </td>
-                            <td className="px-2 py-1 text-right">
-                              {formatMoney(lineBase)}
-                            </td>
-                            <td className="px-2 py-1 text-right">
-                              {lines.length > 1 && (
-                                <button
-                                  type="button"
-                                  className="text-[11px] text-red-600 underline"
-                                  onClick={() => removeLine(index)}
-                                >
-                                  Quitar
-                                </button>
-                              )}
-                            </td>
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
-                </div>
+            {/* Totales */}
+            <div className="flex flex-col items-end gap-1 text-[11px] pt-2">
+              <div>
+                <span className="inline-block w-24 text-right mr-2 text-gray-500">
+                  Base imponible
+                </span>
+                <span className="font-mono">{formatMoney(totals.base)} €</span>
               </div>
-
-              {/* Totales + acciones */}
-              <div className="flex flex-wrap items-center justify-between gap-3 pt-2 border-t mt-2">
-                <div className="text-xs space-y-0.5">
-                  <div>
-                    Base imponible:{" "}
-                    <span className="font-semibold">
-                      {formatMoney(totals.base)} €
-                    </span>
-                  </div>
-                  <div>
-                    IVA:{" "}
-                    <span className="font-semibold">
-                      {formatMoney(totals.tax)} €
-                    </span>
-                  </div>
-                  <div>
-                    Total:{" "}
-                    <span className="font-semibold">
-                      {formatMoney(totals.total)} €
-                    </span>
-                  </div>
-                </div>
-
-                <div className="flex gap-2">
-                  <button
-                    type="button"
-                    className="text-xs px-3 py-1 border rounded hover:bg-gray-50"
-                    onClick={onClose}
-                    disabled={loading}
-                  >
-                    Cancelar
-                  </button>
-                  <button
-                    type="submit"
-                    className="text-xs px-3 py-1 border rounded bg-black text-white hover:bg-gray-900 disabled:opacity-60"
-                    disabled={loading}
-                  >
-                    {loading
-                      ? "Guardando..."
-                      : mode === "create"
-                      ? "Guardar presupuesto"
-                      : "Guardar cambios"}
-                  </button>
-                </div>
+              <div>
+                <span className="inline-block w-24 text-right mr-2 text-gray-500">
+                  IVA
+                </span>
+                <span className="font-mono">{formatMoney(totals.tax)} €</span>
               </div>
-            </>
-          )}
+              <div>
+                <span className="inline-block w-24 text-right mr-2 font-semibold">
+                  Total
+                </span>
+                <span className="font-mono font-semibold">
+                  {formatMoney(totals.total)} €
+                </span>
+              </div>
+            </div>
 
-          {/* Footer para modo edit (sin líneas) */}
-          {isEdit && (
-            <div className="flex items-center justify-end gap-2 pt-3 border-t mt-2">
+            {/* Botones */}
+            <div className="flex gap-2 pt-3 border-t mt-2 justify-end">
               <button
                 type="button"
                 className="text-xs px-3 py-1 border rounded hover:bg-gray-50"
@@ -647,10 +669,14 @@ export default function QuoteModal({
                 className="text-xs px-3 py-1 border rounded bg-black text-white hover:bg-gray-900 disabled:opacity-60"
                 disabled={loading}
               >
-                {loading ? "Guardando..." : "Guardar cambios"}
+                {loading
+                  ? "Guardando..."
+                  : isEdit
+                  ? "Guardar cambios"
+                  : "Guardar presupuesto"}
               </button>
             </div>
-          )}
+          </div>
         </form>
       </div>
     </div>
