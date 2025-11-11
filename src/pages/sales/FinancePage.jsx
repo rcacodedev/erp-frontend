@@ -7,6 +7,7 @@ import Toast from "../../components/Toast.jsx";
 import Tabs from "../../components/ui/Tabs.jsx";
 import QuoteModal from "../../components/sales/QuoteModal.jsx";
 import InvoiceLinesModal from "../../components/sales/InvoiceLinesModal.jsx";
+import InvoicePaymentModal from "../../components/sales/InvoicePaymentModal.jsx";
 
 function displayContactName(c) {
   if (!c) return "";
@@ -23,6 +24,30 @@ function formatMoney(v) {
   const num = Number(v);
   if (!Number.isFinite(num)) return String(v);
   return num.toFixed(2);
+}
+
+function getPaymentStatusBadge(status) {
+  const s = (status || "pending").toLowerCase();
+
+  if (s === "paid" || s === "pagada") {
+    return {
+      label: "Pagada",
+      className: "bg-green-100 text-green-800",
+    };
+  }
+
+  if (s === "partial" || s === "parcial") {
+    return {
+      label: "Parcial",
+      className: "bg-amber-100 text-amber-800",
+    };
+  }
+
+  // pending, null, unknown...
+  return {
+    label: "Pendiente",
+    className: "bg-gray-100 text-gray-800",
+  };
 }
 
 export default function FinancePage() {
@@ -46,6 +71,10 @@ export default function FinancePage() {
   // Modal de factura (editar líneas)
   const [invoiceModalOpen, setInvoiceModalOpen] = useState(false);
   const [invoiceToEdit, setInvoiceToEdit] = useState(null);
+
+  // Modal de cobro de factura
+  const [paymentModalOpen, setPaymentModalOpen] = useState(false);
+  const [invoiceForPayment, setInvoiceForPayment] = useState(null);
 
   // --- Loaders ----------------------------------------------------
 
@@ -297,45 +326,10 @@ export default function FinancePage() {
     }
   };
 
-  const handleRegisterPayment = async (inv) => {
+  const handleRegisterPayment = (inv) => {
     if (!org?.slug) return;
-    const amountStr = window.prompt(
-      `Importe cobrado para la factura ${inv.series || ""}${inv.number}:`,
-      formatMoney(inv.total)
-    );
-    if (!amountStr) return;
-    const amount = Number(amountStr);
-    if (!Number.isFinite(amount) || amount <= 0) {
-      window.alert("Importe no válido.");
-      return;
-    }
-    const today = new Date().toISOString().slice(0, 10);
-    const dateStr =
-      window.prompt("Fecha del cobro (YYYY-MM-DD):", inv.date_issue || today) ||
-      today;
-
-    try {
-      await http.post(
-        tpath(org.slug, `/sales/invoices/${inv.id}/register_payment/`),
-        {
-          amount,
-          date: dateStr,
-        }
-      );
-      await loadInvoices();
-      setToast({
-        kind: "success",
-        msg: `Cobro registrado para la factura ${inv.series || ""}${
-          inv.number
-        }.`,
-      });
-    } catch (err) {
-      console.error(err);
-      setToast({
-        kind: "error",
-        msg: "No se pudo registrar el cobro.",
-      });
-    }
+    setInvoiceForPayment(inv);
+    setPaymentModalOpen(true);
   };
 
   const handleDeleteQuote = async (quote) => {
@@ -698,10 +692,18 @@ export default function FinancePage() {
                       </span>
                     </td>
                     <td className="px-3 py-2 text-center">
-                      <span className="inline-flex px-2 py-0.5 rounded-full text-[11px] bg-gray-100">
-                        {inv.payment_status || "pending"}
-                      </span>
+                      {(() => {
+                        const badge = getPaymentStatusBadge(inv.payment_status);
+                        return (
+                          <span
+                            className={`inline-flex px-2 py-0.5 rounded-full text-[11px] ${badge.className}`}
+                          >
+                            {badge.label}
+                          </span>
+                        );
+                      })()}
                     </td>
+
                     <td className="px-3 py-2 text-center">
                       <span className="inline-flex px-2 py-0.5 rounded-full text-[11px] bg-gray-100">
                         {inv.verifactu_status || "pending"}
@@ -795,6 +797,24 @@ export default function FinancePage() {
         }}
         onSaved={async () => {
           await loadInvoices();
+        }}
+      />
+      <InvoicePaymentModal
+        open={paymentModalOpen}
+        invoice={invoiceForPayment}
+        onClose={() => {
+          setPaymentModalOpen(false);
+          setInvoiceForPayment(null);
+        }}
+        onSaved={async () => {
+          await loadInvoices();
+          setToast({
+            kind: "success",
+            msg: `Cobro registrado para la factura ${
+              (invoiceForPayment?.series || "") +
+              (invoiceForPayment?.number || "")
+            }.`,
+          });
         }}
       />
     </section>

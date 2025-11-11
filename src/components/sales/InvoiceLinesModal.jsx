@@ -30,6 +30,7 @@ export default function InvoiceLinesModal({ open, invoice, onClose, onSaved }) {
 
   const [header, setHeader] = useState(null);
   const [lines, setLines] = useState([]);
+  const [products, setProducts] = useState([]);
 
   useEffect(() => {
     if (!open || !org?.slug || !invoice?.id) return;
@@ -37,10 +38,22 @@ export default function InvoiceLinesModal({ open, invoice, onClose, onSaved }) {
     setToast(null);
     setLoadingInv(true);
 
-    http
-      .get(tpath(org.slug, `/sales/invoices/${invoice.id}/`))
-      .then(({ data }) => {
+    Promise.all([
+      http.get(tpath(org.slug, `/sales/invoices/${invoice.id}/`)),
+      http.get(tpath(org.slug, "/inventory/products/")),
+    ])
+      .then(([invRes, prodRes]) => {
+        const data = invRes.data;
         setHeader(data);
+
+        const pData = prodRes.data;
+        const productItems = Array.isArray(pData?.results)
+          ? pData.results
+          : Array.isArray(pData)
+          ? pData
+          : pData?.items ?? [];
+        setProducts(productItems);
+
         const mapped = Array.isArray(data.lines)
           ? data.lines.map((ln) => ({
               id: ln.id,
@@ -49,7 +62,7 @@ export default function InvoiceLinesModal({ open, invoice, onClose, onSaved }) {
               description: ln.description || "",
               qty:
                 ln.qty !== undefined && ln.qty !== null ? String(ln.qty) : "1",
-              uom: ln.uom || "unidad",
+              uom: ln.uom || "",
               price:
                 ln.unit_price !== undefined && ln.unit_price !== null
                   ? String(ln.unit_price)
@@ -67,7 +80,7 @@ export default function InvoiceLinesModal({ open, invoice, onClose, onSaved }) {
         setLines(mapped.length ? mapped : []);
       })
       .catch((err) => {
-        console.error("Error cargando factura:", err);
+        console.error("Error cargando factura o productos:", err);
         setToast({
           kind: "error",
           msg: "Error cargando la factura para edición.",
@@ -82,22 +95,48 @@ export default function InvoiceLinesModal({ open, invoice, onClose, onSaved }) {
     );
   };
 
+  const handleSelectProduct = (index, productId) => {
+    const p = products.find((x) => String(x.id) === String(productId));
+    const productUom = p?.uom ?? "";
+
+    setLines((prev) =>
+      prev.map((ln, i) =>
+        i === index
+          ? {
+              ...ln,
+              product: productId || null,
+              product_name: p?.name || ln.product_name || "",
+              description: ln.description || p?.name || "",
+              price: p?.price ? String(p.price) : ln.price,
+              tax_rate: p?.tax_rate
+                ? String(p.tax_rate)
+                : ln.tax_rate ?? "21.00",
+              uom: productUom || ln.uom || "",
+            }
+          : ln
+      )
+    );
+  };
+
   const removeLine = (index) => {
     setLines((prev) => prev.filter((_, i) => i !== index));
   };
 
   const addLine = () => {
+    const p0 = products[0];
+    const productUom = p0?.uom ?? "";
+
     setLines((prev) => [
       ...prev,
       {
         id: null,
-        product: null,
-        product_name: "",
-        description: "",
+        product: p0?.id ?? null,
+        product_name: p0?.name || "",
+        description: p0?.name || "",
         qty: "1",
-        uom: "unidad",
-        price: "0.00",
-        tax_rate: "21.00",
+        uom: productUom,
+        price: p0?.price ? String(p0.price) : "0.00",
+        tax_rate: p0?.tax_rate ? String(p0.tax_rate) : "21.00",
         discount_pct: "0.00",
       },
     ]);
@@ -122,7 +161,7 @@ export default function InvoiceLinesModal({ open, invoice, onClose, onSaved }) {
         product: ln.product || null,
         description: ln.description,
         qty: Number(ln.qty) || 0,
-        uom: ln.uom || "unidad",
+        uom: ln.uom || null,
         unit_price: Number(ln.price) || 0,
         tax_rate: Number(ln.tax_rate) || 0,
         discount_pct: Number(ln.discount_pct) || 0,
@@ -216,18 +255,18 @@ export default function InvoiceLinesModal({ open, invoice, onClose, onSaved }) {
                         <th className="px-2 py-1 text-left font-medium">
                           Descripción
                         </th>
+                        <th className="px-2 py-1 text-left font-medium">Uds</th>
                         <th className="px-2 py-1 text-right font-medium">
                           Cant.
                         </th>
-                        <th className="px-2 py-1 text-left font-medium">Uds</th>
                         <th className="px-2 py-1 text-right font-medium">
-                          Precio
+                          Precio (€)
                         </th>
                         <th className="px-2 py-1 text-right font-medium">
                           IVA %
                         </th>
                         <th className="px-2 py-1 text-right font-medium">
-                          Importe
+                          Importe (€)
                         </th>
                         <th className="px-2 py-1 text-right font-medium"> </th>
                       </tr>
@@ -240,11 +279,25 @@ export default function InvoiceLinesModal({ open, invoice, onClose, onSaved }) {
 
                         return (
                           <tr key={index} className="border-t">
+                            {/* Producto */}
                             <td className="px-2 py-1">
-                              <span className="text-[11px]">
-                                {ln.product_name || "(sin producto)"}
-                              </span>
+                              <select
+                                className="border rounded px-1 py-0.5 text-[11px] w-full"
+                                value={ln.product || ""}
+                                onChange={(e) =>
+                                  handleSelectProduct(index, e.target.value)
+                                }
+                              >
+                                <option value="">(sin producto)</option>
+                                {products.map((p) => (
+                                  <option key={p.id} value={p.id}>
+                                    {p.name}
+                                  </option>
+                                ))}
+                              </select>
                             </td>
+
+                            {/* Descripción */}
                             <td className="px-2 py-1">
                               <input
                                 type="text"
@@ -259,6 +312,20 @@ export default function InvoiceLinesModal({ open, invoice, onClose, onSaved }) {
                                 }
                               />
                             </td>
+
+                            {/* Uds */}
+                            <td className="px-2 py-1">
+                              <input
+                                type="text"
+                                className="border rounded px-1 py-0.5 text-[11px] w-20"
+                                value={ln.uom || ""}
+                                onChange={(e) =>
+                                  handleLineChange(index, "uom", e.target.value)
+                                }
+                              />
+                            </td>
+
+                            {/* Cantidad */}
                             <td className="px-2 py-1 text-right">
                               <input
                                 type="number"
@@ -271,16 +338,8 @@ export default function InvoiceLinesModal({ open, invoice, onClose, onSaved }) {
                                 }
                               />
                             </td>
-                            <td className="px-2 py-1">
-                              <input
-                                type="text"
-                                className="border rounded px-1 py-0.5 text-[11px] w-20"
-                                value={ln.uom || ""}
-                                onChange={(e) =>
-                                  handleLineChange(index, "uom", e.target.value)
-                                }
-                              />
-                            </td>
+
+                            {/* Precio */}
                             <td className="px-2 py-1 text-right">
                               <input
                                 type="number"
@@ -297,6 +356,8 @@ export default function InvoiceLinesModal({ open, invoice, onClose, onSaved }) {
                                 }
                               />
                             </td>
+
+                            {/* IVA */}
                             <td className="px-2 py-1 text-right">
                               <input
                                 type="number"
@@ -313,9 +374,13 @@ export default function InvoiceLinesModal({ open, invoice, onClose, onSaved }) {
                                 }
                               />
                             </td>
+
+                            {/* Importe */}
                             <td className="px-2 py-1 text-right">
                               {formatMoney(lineBase)}
                             </td>
+
+                            {/* Quitar */}
                             <td className="px-2 py-1 text-right">
                               {lines.length > 1 && (
                                 <button
