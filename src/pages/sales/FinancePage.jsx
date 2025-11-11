@@ -8,6 +8,7 @@ import Tabs from "../../components/ui/Tabs.jsx";
 import QuoteModal from "../../components/sales/QuoteModal.jsx";
 import InvoiceLinesModal from "../../components/sales/InvoiceLinesModal.jsx";
 import InvoicePaymentModal from "../../components/sales/InvoicePaymentModal.jsx";
+import DeliveryNoteModal from "../../components/sales/DeliveryNoteModal.jsx";
 
 function displayContactName(c) {
   if (!c) return "";
@@ -75,6 +76,11 @@ export default function FinancePage() {
   // Modal de cobro de factura
   const [paymentModalOpen, setPaymentModalOpen] = useState(false);
   const [invoiceForPayment, setInvoiceForPayment] = useState(null);
+
+  // Modal de albarán (nuevo)
+  const [deliveryModalOpen, setDeliveryModalOpen] = useState(false);
+  const [deliveryModalMode, setDeliveryModalMode] = useState("create");
+  const [deliveryToEdit, setDeliveryToEdit] = useState(null);
 
   // --- Loaders ----------------------------------------------------
 
@@ -366,6 +372,68 @@ export default function FinancePage() {
     setInvoiceModalOpen(true);
   };
 
+  // --- Acciones de Albarán ---------------------------------------
+  const handleConfirmDeliveryNote = async (dn) => {
+    if (!org?.slug) return;
+    if (dn.status === "done") return;
+
+    if (
+      !window.confirm(
+        `¿Confirmar el albarán ${dn.number}? Esto actualizará el stock.`
+      )
+    ) {
+      return;
+    }
+
+    try {
+      const { data } = await http.post(
+        tpath(org.slug, `/sales/delivery-notes/${dn.id}/confirm/`)
+      );
+      setDeliveryNotes((prev) =>
+        prev.map((d) => (d.id === data.id ? data : d))
+      );
+      setToast({
+        kind: "success",
+        msg: `Albarán ${data.number} confirmado.`,
+      });
+    } catch (err) {
+      console.error(err);
+      setToast({
+        kind: "error",
+        msg: "No se pudo confirmar el albarán.",
+      });
+    }
+  };
+
+  const handleDeleteDeliveryNote = async (dn) => {
+    if (!org?.slug) return;
+
+    if (
+      !window.confirm(
+        `¿Eliminar el albarán ${dn.number}? Esta acción no se puede deshacer.`
+      )
+    ) {
+      return;
+    }
+
+    try {
+      await http.delete(tpath(org.slug, `/sales/delivery-notes/${dn.id}/`));
+
+      setDeliveryNotes((prev) => prev.filter((d) => d.id !== dn.id));
+
+      setToast({
+        kind: "success",
+        msg: `Albarán ${dn.number} eliminado correctamente.`,
+      });
+    } catch (err) {
+      console.error(err);
+      setToast({
+        kind: "error",
+        msg: "No se pudo eliminar el albarán.",
+      });
+    }
+  };
+
   // --- Tabs --------------------------------------------------------
 
   function QuotesTab() {
@@ -545,22 +613,63 @@ export default function FinancePage() {
   }
 
   function DeliveryNotesTab() {
+    const [search, setSearch] = useState("");
+
+    const filteredDeliveryNotes = useMemo(() => {
+      const term = search.trim().toLowerCase();
+      if (!term) return deliveryNotes;
+
+      return deliveryNotes.filter((dn) => {
+        const num = String(dn.number || "").toLowerCase();
+        const cust = displayContactName(
+          dn.customer_detail || dn.customer
+        )?.toLowerCase();
+        const wh = String(dn.warehouse || "").toLowerCase();
+        return num.includes(term) || cust.includes(term) || wh.includes(term);
+      });
+    }, [deliveryNotes, search]);
+
     return (
       <div className="space-y-3">
-        <div className="flex items-center justify-between">
+        <div className="flex flex-wrap items-end justify-between gap-3">
           <div>
             <h2 className="font-medium text-sm">Albaranes</h2>
             <p className="text-xs text-gray-600">
-              Lista de albaranes (de momento solo lectura). Más adelante los
-              enlazaremos mejor con inventario y facturas.
+              Lista de albaranes de salida. Puedes crear nuevos y confirmarlos
+              para que actualicen el stock.
             </p>
+          </div>
+          <div className="flex flex-wrap items-end gap-2">
+            <div className="space-y-1">
+              <label className="text-xs font-medium">Buscar</label>
+              <input
+                type="text"
+                className="border rounded px-2 py-1 text-sm"
+                placeholder="Número, cliente o almacén…"
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+              />
+            </div>
+            <button
+              type="button"
+              className="text-xs px-3 py-1 border rounded hover:bg-gray-50"
+              onClick={() => {
+                setDeliveryModalMode("create");
+                setDeliveryToEdit(null);
+                setDeliveryModalOpen(true);
+              }}
+            >
+              Nuevo albarán
+            </button>
           </div>
         </div>
 
         {loadingDN ? (
           <p className="text-sm text-gray-600">Cargando albaranes…</p>
-        ) : deliveryNotes.length === 0 ? (
-          <p className="text-sm text-gray-600">No hay albaranes registrados.</p>
+        ) : filteredDeliveryNotes.length === 0 ? (
+          <p className="text-sm text-gray-600">
+            No hay albaranes que coincidan con el filtro.
+          </p>
         ) : (
           <div className="border rounded overflow-auto">
             <table className="min-w-full text-xs md:text-sm">
@@ -571,21 +680,65 @@ export default function FinancePage() {
                   <th className="px-3 py-2 text-left font-medium">Cliente</th>
                   <th className="px-3 py-2 text-left font-medium">Almacén</th>
                   <th className="px-3 py-2 text-center font-medium">Estado</th>
+                  <th className="px-3 py-2 text-right font-medium">Acciones</th>
                 </tr>
               </thead>
               <tbody>
-                {deliveryNotes.map((dn) => (
+                {filteredDeliveryNotes.map((dn) => (
                   <tr key={dn.id} className="border-t">
                     <td className="px-3 py-2">{dn.number}</td>
                     <td className="px-3 py-2">{dn.date}</td>
                     <td className="px-3 py-2">
                       {displayContactName(dn.customer_detail || dn.customer)}
                     </td>
-                    <td className="px-3 py-2">{dn.warehouse || ""}</td>
+                    <td className="px-3 py-2">
+                      {dn.warehouse || "" /* por ahora viene como ID */}
+                    </td>
                     <td className="px-3 py-2 text-center">
-                      <span className="inline-flex px-2 py-0.5 rounded-full text-[11px] bg-gray-100">
+                      <span
+                        className={`inline-flex px-2 py-0.5 rounded-full text-[11px] ${
+                          dn.status === "done"
+                            ? "bg-green-100 text-green-800"
+                            : "bg-gray-100 text-gray-800"
+                        }`}
+                      >
                         {dn.status}
                       </span>
+                    </td>
+                    <td className="px-3 py-2 text-right space-x-2">
+                      {dn.status !== "done" && (
+                        <>
+                          <button
+                            type="button"
+                            className="text-[11px] underline"
+                            onClick={() => {
+                              setDeliveryModalMode("edit");
+                              setDeliveryToEdit(dn);
+                              setDeliveryModalOpen(true);
+                            }}
+                          >
+                            Editar
+                          </button>
+                          <button
+                            type="button"
+                            className="text-[11px] underline"
+                            onClick={() => handleConfirmDeliveryNote(dn)}
+                          >
+                            Confirmar
+                          </button>
+                        </>
+                      )}
+
+                      {/* Eliminar (permitimos siempre, o si quieres solo drafts, mete condición) */}
+                      {dn.status === "draft" && (
+                        <button
+                          type="button"
+                          className="text-[11px] underline text-red-600"
+                          onClick={() => handleDeleteDeliveryNote(dn)}
+                        >
+                          Eliminar
+                        </button>
+                      )}
                     </td>
                   </tr>
                 ))}
@@ -653,9 +806,9 @@ export default function FinancePage() {
                   <th className="px-3 py-2 text-right font-medium">Total</th>
                   <th className="px-3 py-2 text-center font-medium">Estado</th>
                   <th className="px-3 py-2 text-center font-medium">Cobro</th>
-                  <th className="px-3 py-2 text-center font-medium">
-                    Verifactu
-                  </th>
+                  {/* <th className="px-3 py-2 text-center font-medium"> */}
+                  {/* Verifactu */}
+                  {/* </th> */}
                   <th className="px-3 py-2 text-right font-medium">Acciones</th>
                 </tr>
               </thead>
@@ -704,11 +857,11 @@ export default function FinancePage() {
                       })()}
                     </td>
 
-                    <td className="px-3 py-2 text-center">
-                      <span className="inline-flex px-2 py-0.5 rounded-full text-[11px] bg-gray-100">
-                        {inv.verifactu_status || "pending"}
-                      </span>
-                    </td>
+                    {/* <td className="px-3 py-2 text-center"> */}
+                    {/* <span className="inline-flex px-2 py-0.5 rounded-full text-[11px] bg-gray-100"> */}
+                    {/* {inv.verifactu_status || "pending"} */}
+                    {/* </span> */}
+                    {/* </td> */}
                     <td className="px-3 py-2 text-right space-x-2">
                       {inv.status !== "posted" && (
                         <>
@@ -815,6 +968,19 @@ export default function FinancePage() {
               (invoiceForPayment?.number || "")
             }.`,
           });
+        }}
+      />
+
+      <DeliveryNoteModal
+        open={deliveryModalOpen}
+        mode={deliveryModalMode}
+        initial={deliveryToEdit}
+        onClose={() => {
+          setDeliveryModalOpen(false);
+          setDeliveryToEdit(null);
+        }}
+        onSaved={async () => {
+          await loadDeliveryNotes();
         }}
       />
     </section>
