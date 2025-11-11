@@ -1,1 +1,55 @@
 @import "tailwindcss";
+
+@media print {
+  /* Ocultar el navbar y cualquier cosa marcada como no imprimible */
+  .navbar-print-hide,
+  .no-print {
+    display: none !important;
+  }
+}
+
+@media print {
+  @page {
+    size: A4;
+    margin: 10mm 15mm;
+  }
+
+  body {
+    margin: 0;
+    background: #ffffff !important;
+  }
+
+  /* Ocultar navbar y controles de pantalla */
+  .navbar-print-hide,
+  .no-print {
+    display: none !important;
+  }
+
+  /* Página de factura */
+  .invoice-print-page {
+    max-width: none !important;
+    width: 100% !important;
+    border: none !important;
+    box-shadow: none !important;
+    padding: 0 !important;
+  }
+
+  .invoice-print-inner {
+    border: none !important;
+    box-shadow: none !important;
+    max-width: none !important;
+    width: 100% !important;
+    padding: 0 !important;
+  }
+
+  .invoice-lines-box {
+    min-height: 80mm; /* da aire aunque solo haya 1 línea */
+  }
+
+  .invoice-notes-box {
+    min-height: 25mm; /* espacio razonable para comentarios */
+  }
+  .invoice-legal-box {
+    min-height: 20mm;
+  }
+}

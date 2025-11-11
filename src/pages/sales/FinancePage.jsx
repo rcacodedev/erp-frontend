@@ -1,5 +1,6 @@
 // src/pages/sales/FinancePage.jsx
 import { useEffect, useMemo, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { useAuth } from "../../auth/AuthProvider.jsx";
 import http from "../../api/http";
 import { tpath } from "../../lib/tenantPath";
@@ -53,6 +54,7 @@ function getPaymentStatusBadge(status) {
 
 export default function FinancePage() {
   const { org } = useAuth();
+  const nav = useNavigate();
 
   const [quotes, setQuotes] = useState([]);
   const [deliveryNotes, setDeliveryNotes] = useState([]);
@@ -373,9 +375,8 @@ export default function FinancePage() {
   };
 
   const handleOpenInvoicePdf = (inv) => {
-    if (!org?.slug || !inv?.id) return;
-    const url = tpath(org.slug, `/sales/invoices/${inv.id}/print/`);
-    window.open(url, "_blank", "noopener,noreferrer");
+    if (!inv?.id) return;
+    nav(`/finanzas/facturas/${inv.id}/print`);
   };
 
   // --- Acciones de Albarán ---------------------------------------
@@ -438,6 +439,15 @@ export default function FinancePage() {
         msg: "No se pudo eliminar el albarán.",
       });
     }
+  };
+  const handleOpenDeliveryNotePdf = (dn) => {
+    if (!dn?.id) return;
+    nav(`/finanzas/albaranes/${dn.id}/print`);
+  };
+
+  const handleOpenQuotePdf = (quote) => {
+    if (!quote?.id) return;
+    nav(`/finanzas/presupuestos/${quote.id}/print`);
   };
 
   // --- Tabs --------------------------------------------------------
@@ -607,6 +617,13 @@ export default function FinancePage() {
                           A factura
                         </button>
                       )}
+                      <button
+                        type="button"
+                        className="text-[11px] underline"
+                        onClick={() => handleOpenQuotePdf(q)}
+                      >
+                        PDF
+                      </button>
                     </td>
                   </tr>
                 ))}
@@ -745,6 +762,13 @@ export default function FinancePage() {
                           Eliminar
                         </button>
                       )}
+                      <button
+                        type="button"
+                        className="text-[11px] underline"
+                        onClick={() => handleOpenDeliveryNotePdf(dn)}
+                      >
+                        PDF
+                      </button>
                     </td>
                   </tr>
                 ))}

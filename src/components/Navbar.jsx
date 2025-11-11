@@ -15,7 +15,7 @@ export default function Navbar() {
   };
 
   return (
-    <header className="sticky top-0 z-30 bg-white/80 backdrop-blur border-b">
+    <header className="sticky top-0 z-30 bg-white/80 backdrop-blur border-b navbar-print-hide">
       <div className="max-w-6xl mx-auto px-4 py-3 flex items-center gap-4">
         <Link to="/dashboard" className="font-semibold tracking-tight">
           ERP<span className="text-gray-500">.MVP</span>

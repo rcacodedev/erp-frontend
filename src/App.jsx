@@ -33,6 +33,10 @@ import SupplierProfile from "./pages/contacts/SupplierProfile.jsx";
 import InventoryPage from "./pages/inventory/InventoryPage.jsx";
 import FinancePage from "./pages/sales/FinancePage.jsx";
 
+import InvoicePrintPage from "./pages/sales/InvoicePrintPage.jsx";
+import QuotePrintPage from "./pages/sales/QuotePrintPage.jsx";
+import DeliveryNotePrintPage from "./pages/sales/DeliveryNotePrintPage.jsx";
+
 // Layout protegido con Navbar + Outlet
 function ProtectedShell() {
   return (
@@ -64,6 +68,19 @@ export default function App() {
 
             {/* Finanzas */}
             <Route path="/finanzas" element={<FinancePage />} />
+            <Route path="/finanzas" element={<FinancePage />} />
+            <Route
+              path="/finanzas/facturas/:invoiceId/print"
+              element={<InvoicePrintPage />}
+            />
+            <Route
+              path="/finanzas/presupuestos/:quoteId/print"
+              element={<QuotePrintPage />}
+            />
+            <Route
+              path="/finanzas/albaranes/:deliveryNoteId/print"
+              element={<DeliveryNotePrintPage />}
+            />
 
             {/* Billing */}
             <Route path="/billing/plans" element={<BillingPlans />} />
