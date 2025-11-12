@@ -53,3 +53,111 @@
     min-height: 20mm;
   }
 }
+
+/* --- UI base ERP F5A --- */
+.btn {
+  @apply inline-flex items-center justify-center h-10 px-4 rounded-xl border border-neutral-300 bg-white hover:bg-neutral-50 text-sm font-medium transition;
+}
+.btn-ghost {
+  @apply bg-transparent border-transparent hover:bg-neutral-100;
+}
+.btn-primary {
+  @apply bg-blue-600 text-white border-blue-600 hover:bg-blue-700;
+}
+.btn-sm {
+  @apply h-8 px-3 text-xs rounded-lg;
+}
+
+.card {
+  @apply rounded-2xl border border-neutral-200 bg-white shadow-sm;
+}
+
+.tab {
+  @apply h-9 px-3 rounded-lg text-sm border border-transparent hover:bg-neutral-100;
+}
+.tab-active {
+  @apply bg-neutral-900 text-white hover:bg-neutral-900;
+}
+
+.input,
+.select,
+.textarea {
+  @apply w-full rounded-xl border border-neutral-300 bg-white px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-500;
+}
+.textarea {
+  @apply min-h-[44px];
+}
+.label {
+  @apply text-xs text-neutral-600 mb-1;
+}
+.form-control {
+  @apply flex flex-col;
+}
+
+.icon-btn {
+  @apply h-9 w-9 inline-flex items-center justify-center rounded-lg hover:bg-neutral-100;
+}
+
+/* Chips / badges */
+.badge {
+  @apply inline-flex items-center gap-1 px-2 py-0.5 rounded-lg text-[11px] bg-neutral-100 text-neutral-700 border border-neutral-200;
+}
+.badge-soft {
+  @apply bg-blue-50 text-blue-700 border-blue-200;
+}
+.badge-warn {
+  @apply bg-amber-50 text-amber-800 border-amber-200;
+}
+
+/* Evento de nota importante en FullCalendar */
+.fc .note-important {
+  border-style: dashed;
+  border-color: rgb(251 191 36 / 1); /* amber-400 */
+  background: rgba(251, 191, 36, 0.08);
+}
+.fc .note-important .fc-event-title {
+  font-weight: 600;
+}
+
+.fc .overlay-invoice {
+  border-style: dotted;
+  border-color: rgb(37 99 235 / 1); /* blue-600 */
+  background: rgba(37, 99, 235, 0.06);
+}
+
+/* Asegura que el texto del evento herede el color que calculamos en renderEvent */
+.fc .fc-event,
+.fc .fc-event .fc-event-main {
+  color: inherit;
+}
+
+/* Cuando FullCalendar pinta links, forzamos a heredar color */
+.fc .fc-event a {
+  color: inherit;
+}
+
+/* Un pelín más de contraste en el título del día */
+.fc .fc-col-header-cell-cushion {
+  color: #111;
+}
+
+/* Si el backend devuelve status === done y tú lo propagas a extendedProps.status
+   puedes añadir classNames condicionales desde renderEvent si lo prefieres.
+   Aquí un fallback CSS para cuando FullCalendar pinta su HTML interno: */
+.fc .fc-event.done .fc-event-title,
+.fc .fc-event.done .fc-event-time {
+  text-decoration: line-through;
+  opacity: 0.7;
+}
+
+/* Notas importantes dentro del calendario: forzamos texto oscuro */
+.fc .note-important,
+.fc .note-important * {
+  color: #111 !important;
+}
+
+/* Asegura que el hover esté por encima de todo (por si hay otros z-index) */
+.fc,
+.fc * {
+  /* no tocamos pointer-events; solo recordatorio de stacking context */
+}

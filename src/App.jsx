@@ -10,7 +10,6 @@ import ProtectedRoute from "./router/ProtectedRoute.jsx";
 
 import Navbar from "./components/Navbar.jsx";
 import Login from "./pages/Login.jsx";
-import Dashboard from "./pages/Dashboard.jsx";
 
 // Billing
 import BillingPlans from "./pages/billing/BillingPlans.jsx";
@@ -37,6 +36,8 @@ import InvoicePrintPage from "./pages/sales/InvoicePrintPage.jsx";
 import QuotePrintPage from "./pages/sales/QuotePrintPage.jsx";
 import DeliveryNotePrintPage from "./pages/sales/DeliveryNotePrintPage.jsx";
 
+import SuperAgenda from "./pages/agenda/SuperAgenda.jsx";
+
 // Layout protegido con Navbar + Outlet
 function ProtectedShell() {
   return (
@@ -61,13 +62,12 @@ export default function App() {
           <Route element={<ProtectedShell />}>
             {/* Home → redirige a dashboard */}
             <Route path="/" element={<Navigate to="/dashboard" replace />} />
-            <Route path="/dashboard" element={<Dashboard />} />
+            <Route path="/dashboard" element={<SuperAgenda />} />
 
             {/* Inventario */}
             <Route path="/inventory" element={<InventoryPage />} />
 
             {/* Finanzas */}
-            <Route path="/finanzas" element={<FinancePage />} />
             <Route path="/finanzas" element={<FinancePage />} />
             <Route
               path="/finanzas/facturas/:invoiceId/print"
