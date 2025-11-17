@@ -65,6 +65,17 @@ export default function Navbar() {
           </NavLink>
 
           <NavLink
+            to="/kpis"
+            className={({ isActive }) =>
+              `px-2 py-1 rounded ${
+                isActive ? "bg-black text-white" : "hover:bg-gray-100"
+              }`
+            }
+          >
+            KPIs
+          </NavLink>
+
+          <NavLink
             to="/billing/plans"
             className={({ isActive }) =>
               `px-2 py-1 rounded ${
