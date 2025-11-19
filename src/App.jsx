@@ -39,6 +39,8 @@ import DeliveryNotePrintPage from "./pages/sales/DeliveryNotePrintPage.jsx";
 import SuperAgenda from "./pages/agenda/SuperAgenda.jsx";
 import KpisPage from "./pages/kpis/KpisPage.jsx";
 
+import PurchasesPage from "./pages/purchases/PurchasesPage.jsx";
+
 // Layout protegido con Navbar + Outlet
 function ProtectedShell() {
   return (
@@ -67,6 +69,7 @@ export default function App() {
 
             {/* Inventario */}
             <Route path="/inventory" element={<InventoryPage />} />
+            <Route path="/purchases" element={<PurchasesPage />} />
 
             {/* Kpis */}
             <Route path="/kpis" element={<KpisPage />} />
