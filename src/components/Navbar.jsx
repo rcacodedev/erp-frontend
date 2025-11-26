@@ -87,14 +87,14 @@ export default function Navbar() {
           </NavLink>
 
           <NavLink
-            to="/billing/plans"
+            to="/settings"
             className={({ isActive }) =>
               `px-2 py-1 rounded ${
                 isActive ? "bg-black text-white" : "hover:bg-gray-100"
               }`
             }
           >
-            Billing
+            Ajustes
           </NavLink>
         </nav>
 

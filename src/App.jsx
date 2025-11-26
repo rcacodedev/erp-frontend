@@ -41,6 +41,10 @@ import KpisPage from "./pages/kpis/KpisPage.jsx";
 
 import PurchasesPage from "./pages/purchases/PurchasesPage.jsx";
 
+import SettingsLayout from "./pages/settings/Settingslayout.jsx";
+import OrgEmailSettingsPage from "./pages/settings/OrgEmailSettingsPage.jsx";
+import WebhooksSettingsPage from "./pages/settings/WebhooksSettingsPage.jsx";
+
 // Layout protegido con Navbar + Outlet
 function ProtectedShell() {
   return (
@@ -71,7 +75,7 @@ export default function App() {
             <Route path="/inventory" element={<InventoryPage />} />
             <Route path="/purchases" element={<PurchasesPage />} />
 
-            {/* Kpis */}
+            {/* KPIs */}
             <Route path="/kpis" element={<KpisPage />} />
 
             {/* Finanzas */}
@@ -89,11 +93,22 @@ export default function App() {
               element={<DeliveryNotePrintPage />}
             />
 
-            {/* Billing */}
+            {/* Ajustes */}
+            <Route path="/settings" element={<SettingsLayout />}>
+              <Route index element={<Navigate to="email" replace />} />
+              <Route path="email" element={<OrgEmailSettingsPage />} />
+              {/* Facturación dentro de Ajustes */}
+              <Route path="billing" element={<MySubscription />} />
+              <Route path="integrations" element={<WebhooksSettingsPage />} />
+              {/* Futuras secciones: profile, org, notificaciones, etc. */}
+            </Route>
+
+            {/* Billing (planes + callbacks Stripe) */}
             <Route path="/billing/plans" element={<BillingPlans />} />
+            {/* Alias antiguo: manda a Ajustes → Facturación */}
             <Route
               path="/billing/my-subscription"
-              element={<MySubscription />}
+              element={<Navigate to="/settings/billing" replace />}
             />
             <Route path="/billing/success" element={<BillingSuccess />} />
             <Route path="/billing/cancel" element={<BillingCancel />} />
@@ -102,7 +117,7 @@ export default function App() {
               element={<BillingPortalReturn />}
             />
 
-            {/* Contacts (usa tu ContactsLayout con <Outlet /> dentro) */}
+            {/* Contacts (usa ContactsLayout con <Outlet /> dentro) */}
             <Route path="/contacts" element={<ContactsLayout />}>
               {/* Listas */}
               <Route index element={<Clients />} />
